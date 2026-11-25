@@ -78,6 +78,7 @@ create table if not exists public.match_players (
     kingdom_name       text not null,
     color              text not null default '#e63946',
     emblem             text not null default 'crown' check (emblem in ('crown','lion','dragon','sword')),
+    flag_pattern       text not null default 'solid',
     age                integer not null default 1 check (age between 1 and 4),
     alliance           text not null default '',
     vassal_of          uuid,
