@@ -132,6 +132,14 @@
             <option value="diagonal">Diagonal</option>
           </select>
         </label>
+        <label>Wappen-Rahmen
+          <select id="my-frame">
+            <option value="gold">🥇 Gold-Rahmen</option>
+            <option value="silver">🥈 Silber-Rahmen</option>
+            <option value="iron">🛡️ Eisen-Rahmen</option>
+            <option value="none">Kein Rahmen</option>
+          </select>
+        </label>
         <div class="emblem-picker" id="emblem-picker"></div>
         <button id="btn-save-kingdom" class="btn primary">Speichern</button>
       </div>
@@ -163,6 +171,7 @@
       <div class="row hud-buttons">
         <button id="btn-tutorial" class="btn" title="Tutorial">📖 Hilfe</button>
         <button id="btn-admin" class="btn gold" hidden>👑 Admin</button>
+        <button id="btn-fullscreen" class="btn ghost" title="Vollbild">⛶</button>
         <button id="btn-mute" class="btn ghost">🔊</button>
         <button id="btn-leave-game" class="btn ghost">🚪</button>
       </div>
@@ -202,6 +211,11 @@
         </nav>
         <div id="panel" class="panel"></div>
         <div id="panel-chat" class="panel chat-panel" hidden>
+          <div class="row" style="margin-bottom:6px">
+            <button class="btn small active" data-cfilter="all">Alle</button>
+            <button class="btn small" data-cfilter="players">💬 Spieler</button>
+            <button class="btn small" data-cfilter="events">📜 Krieg</button>
+          </div>
           <div id="chat-log" class="chat-log"></div>
           <form id="chat-form" class="row">
             <label style="margin:0;white-space:nowrap"><input type="checkbox" id="chat-ally" />🤝</label>
