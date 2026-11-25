@@ -261,6 +261,7 @@ export function getBuildingSprite(type, color = '#c94a38') {
       px(ctx, 18, 15, '#9ca4b0', 4, 2);
       break;
     case 'tower':
+    case 'world_tower':
       px(ctx, 7, 6, '#7d8590', 18, 22);
       px(ctx, 5, 2, '#5c636e', 22, 6);
       px(ctx, 5, 0, '#9aa3b0', 5, 3);
@@ -268,6 +269,20 @@ export function getBuildingSprite(type, color = '#c94a38') {
       px(ctx, 22, 0, '#9aa3b0', 5, 3);
       px(ctx, 14, 11, '#1f2329', 4, 6);
       px(ctx, 13, 19, color, 6, 6);
+      break;
+    case 'fort':
+      px(ctx, 3, 10, '#6d7580', 26, 18);
+      px(ctx, 2, 6, '#87919e', 7, 22);
+      px(ctx, 23, 6, '#87919e', 7, 22);
+      px(ctx, 11, 14, '#543218', 10, 14);
+      px(ctx, 13, 3, color, 6, 5);
+      px(ctx, 12, 3, '#3b220e', 1, 8);
+      break;
+    case 'outpost':
+      px(ctx, 6, 12, '#8a592d', 20, 16);
+      px(ctx, 4, 8, color, 24, 5);
+      px(ctx, 12, 18, '#3b220e', 8, 10);
+      px(ctx, 22, 20, '#f5c542', 5, 5);
       break;
     default:
       px(ctx, 6, 6, color, 20, 20);
