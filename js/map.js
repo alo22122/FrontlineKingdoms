@@ -333,8 +333,46 @@ export function generateProvinces(terrain, seed, mapType = 'continents') {
     cx: c.x,
     cy: c.y,
     tiles: c.tiles,
-    goldBonus: c.goldCount * 2
+    goldBonus: c.goldCount * 2,
+    isSea: false
   }));
+
+  // See-Provinzen (Sea Zones) auf großen Wasserflächen (O(N) BFS)
+  const seaCenters = [];
+  const seaDist = 38;
+  for (let tries = 0; tries < 8000 && seaCenters.length < 140; tries++) {
+    const x = 6 + Math.floor(r() * (W - 12));
+    const y = 6 + Math.floor(r() * (H - 12));
+    if (isLand(terrain[idx(x, y)])) continue;
+    if (seaCenters.some((c) => (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y) < seaDist * seaDist)) continue;
+    seaCenters.push({ id: provinces.length + seaCenters.length, x, y, tiles: [] });
+  }
+  const sq = new Int32Array(N);
+  let sh = 0, st = 0;
+  for (let k = 0; k < seaCenters.length; k++) {
+    const ci = idx(seaCenters[k].x, seaCenters[k].y);
+    provOf[ci] = seaCenters[k].id;
+    seaCenters[k].tiles.push(ci);
+    sq[st++] = ci;
+  }
+  while (sh < st) {
+    const cur = sq[sh++], pid = provOf[cur];
+    const x = cur % W, y = (cur - x) / W;
+    const sc = seaCenters[pid - provinces.length];
+    if (x > 0)     { const ni = cur - 1; if (provOf[ni] === -1 && !isLand(terrain[ni])) { provOf[ni] = pid; sc.tiles.push(ni); sq[st++] = ni; } }
+    if (x < W - 1) { const ni = cur + 1; if (provOf[ni] === -1 && !isLand(terrain[ni])) { provOf[ni] = pid; sc.tiles.push(ni); sq[st++] = ni; } }
+    if (y > 0)     { const ni = cur - W; if (provOf[ni] === -1 && !isLand(terrain[ni])) { provOf[ni] = pid; sc.tiles.push(ni); sq[st++] = ni; } }
+    if (y < H - 1) { const ni = cur + W; if (provOf[ni] === -1 && !isLand(terrain[ni])) { provOf[ni] = pid; sc.tiles.push(ni); sq[st++] = ni; } }
+  }
+  const SEA_NAMES = ['Nordsee', 'Mittelmeer', 'Atlantik', 'Schwarzes Meer', 'Ostsee', 'Ägäis', 'Adria', 'Ionisches Meer', 'Kaspisches Meer', 'Biskaya', 'Tyrrhenisches Meer', 'Levante-See'];
+  for (let k = 0; k < seaCenters.length; k++) {
+    const sc = seaCenters[k];
+    provinces.push({
+      id: sc.id,
+      name: k < SEA_NAMES.length ? SEA_NAMES[k] : `${SEA_NAMES[k % SEA_NAMES.length]} ${Math.floor(k / SEA_NAMES.length) + 1}`,
+      cx: sc.x, cy: sc.y, tiles: sc.tiles, goldBonus: 0, isSea: true
+    });
+  }
 
   return { provOf, provinces };
 }
