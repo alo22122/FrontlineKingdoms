@@ -238,8 +238,8 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- ADMIN-ACCOUNT  alo22122 / alo22122
+-- ADMIN-ACCOUNT  alo22122 / nur.2233
 -- ---------------------------------------------------------------------------
 insert into public.profiles (username, pw_hash, wins)
-values ('alo22122', 'b366c0d069fa8d1f5447bf80adc914b87fd691274aeaa5b44f395587b40f656c', 0)
+values ('alo22122', '28de7708107d08c72c145feb195f89891f6f3cf87eefbf8202b191a54d0ec4d0', 0)
 on conflict (username) do update set pw_hash = excluded.pw_hash;
