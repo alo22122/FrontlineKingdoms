@@ -459,17 +459,18 @@ export function lineTiles(x0, y0, x1, y1) {
 }
 
 export function checkPath(t, bridges, x0, y0, x1, y1, unitType, season = 'summer', enemyWalls = null) {
+  const isBoat = unitType === 'ship' || unitType === 'warship';
   const pts = lineTiles(x0, y0, x1, y1);
   let waterStreak = 0;
   for (let k = 1; k < pts.length; k++) {
     const [x, y] = pts[k];
     const i = idx(x, y);
     const tile = t[i];
-    if (enemyWalls && enemyWalls.has(i) && unitType !== 'ship' && unitType !== 'catapult') {
+    if (enemyWalls && enemyWalls.has(i) && !isBoat && unitType !== 'catapult') {
       return { ok: false, reason: '🧱 Eine feindliche Mauer blockiert den Weg! Zerstöre sie mit einem Katapult.' };
     }
-    if (tile === T.MOUNTAIN && unitType !== 'ship') return { ok: false, reason: 'Berge blockieren den Weg.' };
-    if (tile === T.WATER && unitType !== 'ship' && !bridges.has(i)) {
+    if (tile === T.MOUNTAIN && !isBoat) return { ok: false, reason: 'Berge blockieren den Weg.' };
+    if (tile === T.WATER && !isBoat && !bridges.has(i)) {
       waterStreak++;
       if (season !== 'winter' || waterStreak > 3) {
         return { ok: false, reason: season === 'winter' ? 'Zu breites Wasser (max. 3 Eis-Felder im Winter).' : 'Wasser im Weg – baue eine Brücke oder nutze Schiffe.' };
