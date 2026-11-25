@@ -2,8 +2,8 @@
 // js/map.js – 200x200 Weltkarten, historische Karten & Crusader-Kings-Provinzen
 // ============================================================================
 
-export const W = 480;
-export const H = 480;
+export const W = 640;
+export const H = 640;
 export const N = W * H;
 
 export const T = { WATER: 0, GRASS: 1, FOREST: 2, HILL: 3, MOUNTAIN: 4, DESERT: 5, GOLD: 6 };
@@ -58,9 +58,9 @@ function makeNoise(seed, cell) {
 }
 
 function fbm(seed, scale = 1) {
-  const n1 = makeNoise(seed, 98 * scale);
-  const n2 = makeNoise(seed + 1, 48 * scale);
-  const n3 = makeNoise(seed + 2, 21 * scale);
+  const n1 = makeNoise(seed, 130 * scale);
+  const n2 = makeNoise(seed + 1, 64 * scale);
+  const n3 = makeNoise(seed + 2, 28 * scale);
   return (x, y) => n1(x, y) * 0.55 + n2(x, y) * 0.3 + n3(x, y) * 0.15;
 }
 
@@ -277,12 +277,12 @@ const PROV_NAMES = {
 export function generateProvinces(terrain, seed, mapType = 'continents') {
   const r = rng(seed + 31337);
   const centers = [];
-  const minDist = 24;
+  const minDist = 32;
 
   // Zentren mit Mindestabstand auf begehbarem Land wählen
-  for (let tries = 0; tries < 18000 && centers.length < 260; tries++) {
-    const x = 8 + Math.floor(r() * (W - 16));
-    const y = 8 + Math.floor(r() * (H - 16));
+  for (let tries = 0; tries < 24000 && centers.length < 320; tries++) {
+    const x = 10 + Math.floor(r() * (W - 20));
+    const y = 10 + Math.floor(r() * (H - 20));
     if (!isPassable(terrain[idx(x, y)])) continue;
     let ok = true;
     for (const c of centers) {
@@ -333,8 +333,8 @@ export function generateProvinces(terrain, seed, mapType = 'continents') {
 export function parseGrid(grid) {
   const str = typeof grid === 'string' ? grid : String(grid || '');
   const t = new Uint8Array(N).fill(T.GRASS);
-  // Abwärtskompatibilität für 100x100, 200x200 oder 320x320 Custom-Maps
-  const srcSize = str.length > 0 && str.length <= 10500 ? 100 : (str.length <= 41000 ? 200 : (str.length <= 105000 ? 320 : 0));
+  // Abwärtskompatibilität für 100x100, 200x200, 320x320 oder 480x480 Custom-Maps
+  const srcSize = str.length > 0 && str.length <= 10500 ? 100 : (str.length <= 41000 ? 200 : (str.length <= 105000 ? 320 : (str.length <= 235000 ? 480 : 0)));
   if (srcSize > 0) {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
@@ -449,14 +449,18 @@ export function lineTiles(x0, y0, x1, y1) {
   return pts;
 }
 
-export function checkPath(t, bridges, x0, y0, x1, y1, unitType, season = 'summer') {
+export function checkPath(t, bridges, x0, y0, x1, y1, unitType, season = 'summer', enemyWalls = null) {
   const pts = lineTiles(x0, y0, x1, y1);
   let waterStreak = 0;
   for (let k = 1; k < pts.length; k++) {
     const [x, y] = pts[k];
-    const tile = t[idx(x, y)];
+    const i = idx(x, y);
+    const tile = t[i];
+    if (enemyWalls && enemyWalls.has(i) && unitType !== 'ship' && unitType !== 'catapult') {
+      return { ok: false, reason: '🧱 Eine feindliche Mauer blockiert den Weg! Zerstöre sie mit einem Katapult.' };
+    }
     if (tile === T.MOUNTAIN && unitType !== 'ship') return { ok: false, reason: 'Berge blockieren den Weg.' };
-    if (tile === T.WATER && unitType !== 'ship' && !bridges.has(idx(x, y))) {
+    if (tile === T.WATER && unitType !== 'ship' && !bridges.has(i)) {
       waterStreak++;
       if (season !== 'winter' || waterStreak > 3) {
         return { ok: false, reason: season === 'winter' ? 'Zu breites Wasser (max. 3 Eis-Felder im Winter).' : 'Wasser im Weg – baue eine Brücke oder nutze Schiffe.' };
