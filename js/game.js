@@ -54,6 +54,11 @@ const UNITS = {
   knight: { name: 'Ritter', age: 3, power: 24, speed: 1.0, cost: { gold: 30, raw_food: 20 } },
   catapult: { name: 'Katapult', age: 4, power: 40, speed: 2.5, cost: { wood: 60, stone: 40, gold: 20 } }
 };
+const WORLD_BUILDINGS = {
+  world_tower: { name: 'Wachturm', cost: { wood: 30, stone: 30 }, desc: 'Deckt 6 Tiles Sicht auf & +10% Kampfkraft.' },
+  fort: { name: 'Festung', cost: { wood: 50, stone: 70 }, desc: '+20% Verteidigung in dieser Region.' },
+  outpost: { name: 'Außenposten', cost: { wood: 45, stone: 25 }, desc: 'Sammelt Gold, Stein & Nahrung auf der Weltkarte.' }
+};
 const BATCH = 5;
 
 // ---------------------------------------------------------------------------
@@ -67,12 +72,12 @@ const S = {
   visible: new Uint8Array(M.N), explored: new Uint8Array(M.N), exploredDirty: false, fogVersion: 0, fogBuilt: -1,
   bridges: new Set(), terrCanvas: null, fogCanvas: null,
   view: 'world', camW: { x: 0, y: 0, z: 1.5 }, camV: { x: 0, y: 0, z: 1 },
-  selectedArmyId: null, selectedBuildingId: null, selectedTile: null, buildType: null, bridgeMode: false, hoverTile: null,
+  selectedArmyId: null, selectedBuildingId: null, selectedTile: null, buildType: null, worldBuildType: null, bridgeMode: false, hoverTile: null,
   online: [], spied: {}, fogOff: false, unsub: null, timers: [], menuTimer: null, inGame: false,
   acc: { wood: 0, stone: 0, gold: 0, raw_food: 0, bread: 0 }, popAcc: 0,
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
   authBusy: false, fireSeen: {}, endShown: false, activeTab: 'info', placing: new Set(), drag: null,
-  lobbyFormFilled: false, myEmblem: 'crown', chatUnread: false, tickCount: 0, rafRunning: false
+  lobbyFormFilled: false, myEmblem: 'crown', chatUnread: false, tickCount: 0, rafRunning: false, tutStep: -1
 };
 
 // ---------------------------------------------------------------------------
@@ -706,6 +711,7 @@ function showGame() {
     if (!a || !$('panel').contains(a) || a.tagName === 'BUTTON') renderPanel();
   }, 1500));
   computeVisibility();
+  if (localStorage.getItem('fk_it_done') !== '1') startInteractiveTut();
   if (!S.rafRunning) {
     S.rafRunning = true;
     requestAnimationFrame(frame);
@@ -738,7 +744,8 @@ function setView(v) {
   S.view = v;
   $('btn-view').textContent = v === 'world' ? '🏘️ Dorf' : '🌍 Weltkarte';
   if (v === 'world') S.buildType = null;
-  else S.bridgeMode = false;
+  else { S.bridgeMode = false; S.worldBuildType = null; }
+  if (v === 'village') advanceTut('view_village');
   updateModeHint();
   renderPanel();
 }
@@ -748,6 +755,7 @@ function updateModeHint() {
   const cancelBtn = $('btn-cancel-mode');
   let txt = '';
   if (S.view === 'village' && S.buildType) txt = `🔨 ${BUILDINGS[S.buildType].name} platzieren – Tippen zum Bauen`;
+  else if (S.view === 'world' && S.worldBuildType) txt = `🌍 ${WORLD_BUILDINGS[S.worldBuildType].name} in deinem Gebiet antippen`;
   else if (S.view === 'world' && S.bridgeMode) txt = '🌉 Wasser-Tile neben deinem Gebiet antippen';
   else if (S.view === 'world' && S.selectedArmyId) txt = '⚔️ Ziel-Provinz / Tile antippen, um die Armee zu schicken';
   el.textContent = txt;
@@ -831,6 +839,15 @@ function estimateRates() {
     if (b.type === 'bakery') {
       d.raw_food -= 0.8 * staff * mf;
       d.bread += 0.8 * staff * mf;
+    }
+  }
+  // Weltkarten-Außenposten produzieren direkt
+  for (const wb of myBuildings('world')) {
+    if (wb.type === 'outpost') {
+      const tile = S.terrain ? S.terrain[M.idx(wb.x, wb.y)] : M.T.GRASS;
+      d.gold += (tile === M.T.GOLD ? 1.2 : 0.45) * mf;
+      d.stone += (tile === M.T.HILL ? 0.8 : 0.35) * mf;
+      d.raw_food += 0.5 * mf;
     }
   }
   const consumption = me.population * 0.05 * (S.match?.season === 'winter' ? 2 : 1);
@@ -1019,6 +1036,7 @@ async function placeBuilding(type, x, y) {
     }
     S.buildings.push(data);
     playSfx('build');
+    advanceTut('village_built');
   } finally {
     S.placing.delete(key);
   }
@@ -1099,6 +1117,30 @@ async function buildBridge(x, y) {
     S.bridges.add(i);
   }
   playSfx('build');
+  advanceTut('world_built');
+}
+
+async function placeWorldBuilding(type, x, y) {
+  if (!S.me || !S.match || S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
+  const i = M.idx(x, y);
+  if (!M.isPassable(S.terrain[i])) return toast('Nur auf begehbarem Land bauen!', 'err');
+  if (S.territory[i] !== S.me.slot) return toast('Du kannst nur in deinem eigenen Gebiet bauen!', 'err');
+  if (S.buildings.some((b) => b.layer === 'world' && b.x === x && b.y === y)) return toast('Hier steht bereits ein Gebäude.', 'err');
+  const def = WORLD_BUILDINGS[type];
+  if (!def || !(await spend(def.cost))) return;
+  const { data, error } = await sb
+    .from('buildings')
+    .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x, y, construction_end_at: new Date().toISOString() })
+    .select()
+    .single();
+  if (error) return toast(error.message, 'err');
+  if (data) S.buildings.push(data);
+  playSfx('build');
+  toast(`🌍 ${def.name} auf der Weltkarte gebaut!`, 'ok');
+  advanceTut('world_built');
+  S.worldBuildType = null;
+  updateModeHint();
+  renderPanel();
 }
 
 function travelMs(unitType, x0, y0, x1, y1) {
@@ -1132,6 +1174,7 @@ async function moveArmy(a, tx, ty) {
   a.arrives_at = arrives;
   await sb.from('armies').update({ target_x: tx, target_y: ty, arrives_at: arrives }).eq('id', a.id);
   playSfx(attacksPlayer ? 'horn' : 'click');
+  advanceTut('army_moved');
   S.selectedArmyId = null;
   updateModeHint();
   renderPanel();
@@ -1286,10 +1329,11 @@ async function authorityTick() {
 }
 
 function towersOf(p) {
-  return countDone('tower', p);
+  return countDone('tower', p) + S.buildings.filter((b) => b.player_id === p.id && b.layer === 'world' && (b.type === 'world_tower' || b.type === 'fort')).length;
 }
 function defenseOf(p) {
-  return countDone('wall', p) * 0.2 + countDone('gate', p) * 0.5 + countDone('tower', p) * 2;
+  return countDone('wall', p) * 0.2 + countDone('gate', p) * 0.5 + countDone('tower', p) * 2 +
+    S.buildings.filter((b) => b.player_id === p.id && b.layer === 'world' && b.type === 'fort').length * 4;
 }
 
 function armyPower(a, x, y) {
@@ -1584,6 +1628,11 @@ function computeVisibility() {
       const p = armyPos(a);
       mark(Math.round(p.x), Math.round(p.y), 4);
     }
+    for (const b of S.buildings) {
+      if (b.layer === 'world' && b.type === 'world_tower' && allied(b.player_id, S.me.id)) {
+        mark(b.x, b.y, 6);
+      }
+    }
     if (S.me.capital_x != null) mark(S.me.capital_x, S.me.capital_y, 5);
   }
   for (let i = 0; i < M.N; i++) {
@@ -1720,6 +1769,15 @@ function renderWorld(ctx) {
     S.provBorderCanvas = bc;
   }
   if (S.provBorderCanvas) ctx.drawImage(S.provBorderCanvas, 0, 0, M.W * TILE, M.H * TILE);
+
+  // Weltkarten-Gebäude (Festungen, Wachtürme, Außenposten)
+  for (const b of S.buildings) {
+    if (b.layer !== 'world' || b.type === 'bridge') continue;
+    const i = M.idx(b.x, b.y);
+    if (!S.explored[i] && !S.fogOff && b.player_id !== S.me.id) continue;
+    const owner = playerById(b.player_id);
+    ctx.drawImage(getBuildingSprite(b.type, owner ? owner.color : '#888'), b.x * TILE, b.y * TILE, TILE, TILE);
+  }
 
   // Hauptstädte
   for (const p of S.players) {
@@ -2039,6 +2097,10 @@ function onCanvasClick(t) {
   }
 
   if (!M.inBounds(t.x, t.y)) return;
+  if (S.worldBuildType) {
+    placeWorldBuilding(S.worldBuildType, t.x, t.y);
+    return;
+  }
   if (S.bridgeMode) {
     buildBridge(t.x, t.y);
     return;
@@ -2066,7 +2128,14 @@ function onCanvasClick(t) {
     setActiveTab('army');
     return;
   }
+  if (S.me.capital_x === t.x && S.me.capital_y === t.y) {
+    playSfx('click');
+    toast('🏰 Hauptstadt betreten → Dorf-Ansicht', 'ok');
+    setView('village');
+    return;
+  }
   S.selectedTile = t;
+  advanceTut('tile_clicked');
   setActiveTab('info');
 }
 
@@ -2207,7 +2276,36 @@ function panelBuild(el) {
   } else ageBox.firstChild.appendChild(h('<p class="muted">Höchstes Zeitalter erreicht!</p>'));
   el.appendChild(ageBox);
 
-  el.appendChild(h('<h3>🔨 Gebäude (Dorf)</h3><p class="muted">Wählen, dann frei im Dorf platzieren. Shift = mehrere.</p>'));
+  el.appendChild(h('<h3>🌍 Auf der Weltkarte bauen</h3><p class="muted">Platziere Gebäude direkt in deinem Gebiet auf der Weltkarte!</p>'));
+  const wgrid = document.createElement('div');
+  wgrid.className = 'grid2';
+  for (const [type, def] of Object.entries(WORLD_BUILDINGS)) {
+    const afford = Object.entries(def.cost).every(([k, v]) => (me[k] || 0) >= v);
+    const b = document.createElement('button');
+    b.className = `bcard${S.worldBuildType === type ? ' active' : ''}`;
+    b.title = def.desc;
+    b.disabled = !afford;
+    b.innerHTML = `<img src="${spriteUrl(getBuildingSprite(type, me.color), 'wb' + type + me.color)}" alt=""><div><div class="name">${def.name}</div><div class="cost">${costText(def.cost)}</div></div>`;
+    b.onclick = () => {
+      playSfx('click');
+      S.worldBuildType = S.worldBuildType === type ? null : type;
+      S.bridgeMode = false;
+      if (S.view !== 'world') setView('world');
+      updateModeHint();
+      renderPanel();
+    };
+    wgrid.appendChild(b);
+  }
+  el.appendChild(wgrid);
+  el.appendChild(btn(S.bridgeMode ? '❌ Brückenbau beenden' : '🌉 Brücke über Wasser (🪵60 🪨20)', () => {
+    S.bridgeMode = !S.bridgeMode;
+    S.worldBuildType = null;
+    if (S.view !== 'world') setView('world');
+    updateModeHint();
+    renderPanel();
+  }, `btn small${S.bridgeMode ? ' active' : ''}`));
+
+  el.appendChild(h('<h3>🏘️ Gebäude im Dorf (40×40)</h3><p class="muted">Wählen, dann frei im Dorf platzieren.</p>'));
   const grid = document.createElement('div');
   grid.className = 'grid2';
   for (const [type, def] of Object.entries(BUILDINGS)) {
@@ -2229,14 +2327,6 @@ function panelBuild(el) {
     grid.appendChild(b);
   }
   el.appendChild(grid);
-
-  el.appendChild(h('<h3>🌉 Weltkarte</h3><p class="muted">Brücke über Flüsse/Meer: 🪵60 🪨20. Muss an dein Gebiet grenzen.</p>'));
-  el.appendChild(btn(S.bridgeMode ? '❌ Brückenbau beenden' : '🌉 Brücke bauen', () => {
-    S.bridgeMode = !S.bridgeMode;
-    if (S.view !== 'world') setView('world');
-    updateModeHint();
-    renderPanel();
-  }, `btn small${S.bridgeMode ? ' active' : ''}`));
 }
 
 function panelArmy(el) {
@@ -2387,6 +2477,52 @@ async function showEnd() {
 }
 
 // ---------------------------------------------------------------------------
+// INTERAKTIVES TUTORIAL
+// ---------------------------------------------------------------------------
+const TUT_STEPS = [
+  { trigger: 'tile_clicked', title: '1/5 · Weltkarte & Provinzen', text: 'Tippe auf ein beliebiges Land-Feld auf der Weltkarte, um den Namen der Provinz und ihren Besitzer zu sehen.' },
+  { trigger: 'world_built', title: '2/5 · Auf der Weltkarte bauen', text: 'Öffne rechts den Tab 🔨, wähle unter „Auf der Weltkarte bauen“ z.B. einen Wachturm oder Außenposten und platziere ihn in deinem Gebiet!' },
+  { trigger: 'view_village', title: '3/5 · Ins verbundene Dorf wechseln', text: 'Tippe oben auf „🏘️ Dorf“ (oder direkt auf deine Hauptstadt auf der Karte), um dein 40×40-Dorf zu betreten.' },
+  { trigger: 'village_built', title: '4/5 · Im Dorf bauen', text: 'Wähle im Tab 🔨 ein Gebäude (z.B. Bauernhof oder Haus) und tippe auf eine freie Wiese im Dorf.' },
+  { trigger: 'army_moved', title: '5/5 · Provinz erobern!', text: 'Wechsle zurück zur Weltkarte (🌍), tippe im Tab ⚔️ oder auf der Karte deine Armee an und schicke sie in eine neutrale Nachbar-Provinz!' }
+];
+
+function startInteractiveTut() {
+  if (!S.inGame) return;
+  S.tutStep = 0;
+  renderTut();
+}
+
+function renderTut() {
+  const box = $('tut-coach');
+  if (!box) return;
+  if (S.tutStep < 0 || S.tutStep >= TUT_STEPS.length || !S.inGame) {
+    box.hidden = true;
+    return;
+  }
+  const st = TUT_STEPS[S.tutStep];
+  $('tut-title').textContent = `📖 ${st.title}`;
+  $('tut-text').textContent = st.text;
+  box.hidden = false;
+}
+
+function advanceTut(trigger) {
+  if (S.tutStep < 0 || S.tutStep >= TUT_STEPS.length) return;
+  if (TUT_STEPS[S.tutStep].trigger !== trigger) return;
+  S.tutStep++;
+  playSfx('coins');
+  if (S.tutStep >= TUT_STEPS.length) {
+    S.tutStep = -1;
+    localStorage.setItem('fk_it_done', '1');
+    toast('🎉 Tutorial abgeschlossen! +25 Gold Bonus!', 'ok');
+    if (S.me) rpcAdd(S.me.id, { gold: 25 }, true);
+  } else {
+    toast('✅ Schritt geschafft!', 'ok');
+  }
+  renderTut();
+}
+
+// ---------------------------------------------------------------------------
 // STATISCHE EVENT-BINDINGS
 // ---------------------------------------------------------------------------
 function toggleMute() {
@@ -2447,8 +2583,22 @@ function bindStatic() {
   };
   $('btn-tutorial-menu').onclick = () => { playSfx('click'); $('modal-tutorial').hidden = false; };
   $('btn-tutorial').onclick = () => { playSfx('click'); $('modal-tutorial').hidden = false; };
+  $('btn-start-tut').onclick = () => {
+    $('modal-tutorial').hidden = true;
+    if (S.inGame) startInteractiveTut();
+    else toast('Starte oder tritt einem Spiel bei, dann startet das interaktive Tutorial!', 'ok');
+  };
+  $('tut-next').onclick = () => {
+    if (S.tutStep >= 0 && S.tutStep < TUT_STEPS.length) advanceTut(TUT_STEPS[S.tutStep].trigger);
+  };
+  $('tut-skip').onclick = () => {
+    S.tutStep = -1;
+    localStorage.setItem('fk_it_done', '1');
+    renderTut();
+  };
   $('btn-cancel-mode').onclick = () => {
     S.buildType = null;
+    S.worldBuildType = null;
     S.bridgeMode = false;
     S.selectedArmyId = null;
     updateModeHint();
