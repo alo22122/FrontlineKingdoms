@@ -11,7 +11,7 @@ import * as M from './map.js';
 import { setupAdmin, openAdminPanel, openMapEditor, refreshAdminPanel } from './admin.js';
 
 const $ = (id) => document.getElementById(id);
-const TILE = 16;
+const TILE = 12;
 const PLAYER_COLORS = ['#e63946', '#457b9d', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb8500', '#8ac926', '#adb5bd'];
 const EMBLEMS = { crown: 'Krone', lion: 'Löwe', dragon: 'Drache', sword: 'Schwert' };
 const AGE_NAMES = ['', 'Dunkles Zeitalter', 'Feudalzeit', 'Ritterzeit', 'Kaiserzeit'];
@@ -34,7 +34,8 @@ const BUILDINGS = {
   fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
   wall:       { name: 'Mauer',      cost: { wood: 10 },           desc: '+25 Garnison-Schutz in der Provinz.' },
   blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
-  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' }
+  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' },
+  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' }
 };
 
 const UNITS = {
@@ -64,7 +65,8 @@ const S = {
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
   authBusy: false, endShown: false, activeTab: 'build', drag: null,
   lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
-  quests: { built: 0, conquered: 0, bandits: 0, fort: 0, done: {} }
+  quests: { built: 0, conquered: 0, bandits: 0, fort: 0, done: {} },
+  alertedArmies: new Set(), provCooldown: {}
 };
 
 // ---------------------------------------------------------------------------
@@ -334,7 +336,23 @@ async function reloadBuildings() {
 async function reloadArmies() {
   if (!S.match) return;
   const { data } = await sb.from('armies').select('*').eq('match_id', S.match.id);
-  if (data) S.armies = data;
+  if (data) {
+    S.armies = data;
+    checkIncomingAttacks();
+  }
+}
+
+function checkIncomingAttacks() {
+  if (!S.me || !S.inGame) return;
+  for (const a of S.armies) {
+    if (!a.player_id || a.player_id === S.me.id || allied(a.player_id, S.me.id) || a.target_x == null) continue;
+    const ti = M.inBounds(a.target_x, a.target_y) ? M.idx(a.target_x, a.target_y) : -1;
+    if (ti >= 0 && S.territory[ti] === S.me.slot && !S.alertedArmies.has(a.id)) {
+      S.alertedArmies.add(a.id);
+      playSfx('horn');
+      toast('🚨 ANGRIFF! Feindliche Truppen marschieren auf dein Gebiet!', 'err');
+    }
+  }
 }
 
 async function reloadChat() {
@@ -627,6 +645,16 @@ function estimateRates() {
     const isGoldTile = S.terrain && S.terrain[M.idx(b.x, b.y)] === M.T.GOLD;
     for (const k in def.prod) d[k] += def.prod[k] * (k === 'gold' && isGoldTile ? 2 : 1);
   }
+  // Seehandel durch Häfen (Gold steigt mit Entfernung zu anderen Häfen)
+  const myHarbors = myBuildings().filter((b) => b.type === 'harbor');
+  const otherHarbors = S.buildings.filter((b) => b.type === 'harbor' && allied(b.player_id, me.id));
+  for (const h1 of myHarbors) {
+    let maxDist = 0;
+    for (const h2 of otherHarbors) {
+      if (h2.id !== h1.id) maxDist = Math.max(maxDist, Math.hypot(h2.x - h1.x, h2.y - h1.y));
+    }
+    d.gold += 1.2 + Math.min(4.5, maxDist * 0.03);
+  }
   for (const k in d) d[k] *= mult;
   return { d, mult };
 }
@@ -704,6 +732,10 @@ async function placeWorldBuilding(type, x, y) {
   if (S.territory[i] !== S.me.slot) return toast('Nur in deinem eigenen Gebiet bauen!', 'err');
   if (S.me.capital_x === x && S.me.capital_y === y) return toast('Auf der Hauptstadt steht schon deine Burg.', 'err');
   if (S.buildings.some((b) => b.x === x && b.y === y)) return toast('Hier steht bereits ein Gebäude.', 'err');
+  if (type === 'harbor') {
+    const nearWater = [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy]) => M.inBounds(x+dx, y+dy) && S.terrain[M.idx(x+dx, y+dy)] === M.T.WATER);
+    if (!nearWater) return toast('🚢 Ein Hafen muss direkt an Wasser (Küste) gebaut werden!', 'err');
+  }
   const def = BUILDINGS[type];
   if (!def || !(await spend(def.cost))) return;
   const { data, error } = await sb.from('buildings')
@@ -792,7 +824,7 @@ async function trainUnits(type) {
 
 function travelMs(unitType, x0, y0, x1, y1) {
   const winterMult = S.match?.season === 'winter' ? 1.25 : 1;
-  return (Math.hypot(x1 - x0, y1 - y0) * (UNITS[unitType]?.speed || 2) * 1800 * winterMult) / speed();
+  return (Math.hypot(x1 - x0, y1 - y0) * (UNITS[unitType]?.speed || 2) * 2400 * winterMult) / speed();
 }
 
 function armyPos(a) {
@@ -986,15 +1018,21 @@ async function resolveArrival(a) {
         await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
         return;
       }
+      if (ownerP && S.provCooldown[ownerP.id] && now() < S.provCooldown[ownerP.id]) {
+        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+        toast(`🛡️ ${ownerP.kingdom_name} hat noch kurzen Eroberungs-Schutz!`, 'err');
+        return;
+      }
       const garrison = ownerP
-        ? 60 + countType('fort', ownerP) * 50 + countType('tower', ownerP) * 25 + countType('wall', ownerP) * 25
-        : (tile === M.T.GOLD ? 85 : tile === M.T.HILL || tile === M.T.FOREST ? 60 : 40);
+        ? 160 + countType('fort', ownerP) * 90 + countType('tower', ownerP) * 45 + countType('wall', ownerP) * 40
+        : (tile === M.T.GOLD ? 180 : tile === M.T.HILL || tile === M.T.FOREST ? 140 : 100);
       const ap = armyPower({ ...a, count }, tx, ty);
       if (ap < garrison) {
         await deleteArmy(a);
         await sysChat(`🛡️ Angriff von ${attacker.kingdom_name} scheiterte an der Provinz-Garnison (Kraft ${Math.round(ap)} < ${garrison})!`);
         return;
       }
+      if (ownerP) S.provCooldown[ownerP.id] = now() + 45000 / speed();
       count = Math.max(1, Math.ceil(count * (1 - (garrison / ap) * 0.55)));
     }
     await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
@@ -1220,6 +1258,18 @@ function render() {
     bctx.putImageData(bimg, 0, 0); S.provBorderCanvas = bc;
   }
   if (S.provBorderCanvas) ctx.drawImage(S.provBorderCanvas, 0, 0, M.W * TILE, M.H * TILE);
+
+  // Provinz-Namen direkt auf der Karte beim Hineinzoomen
+  if (z >= 1.05 && S.provinces) {
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255, 248, 225, 0.58)';
+    for (const prov of S.provinces) {
+      const pi = M.idx(prov.cx, prov.cy);
+      if (!S.explored[pi] && !S.fogOff) continue;
+      ctx.fillText(prov.name, prov.cx * TILE + TILE / 2, prov.cy * TILE + TILE / 2);
+    }
+  }
 
   // Weltkarten-Gebäude direkt auf der Weltkarte
   for (const b of S.buildings) {
@@ -1541,6 +1591,34 @@ function panelArmy(el) {
 
 function panelDiplo(el) {
   const me = S.me;
+  if (me.vassal_of) {
+    const lord = playerById(me.vassal_of);
+    const vbox = h(`<div class="info-box"><h3>👑 Du bist Vasall von ${lord ? esc(lord.kingdom_name) : 'einem König'}</h3><p class="muted">Du zahlst 25% Gold-Steuer. Kaufe dich frei oder starte eine Rebellion!</p></div>`);
+    const row = document.createElement('div'); row.className = 'row';
+    row.appendChild(btn('💰 Freikaufen (250💰)', async () => {
+      if (!(await spend({ gold: 250 }))) return;
+      if (lord) await rpcAdd(lord.id, { gold: 250 }, true);
+      me.vassal_of = null;
+      await sb.from('match_players').update({ vassal_of: null }).eq('id', me.id);
+      playSfx('coins');
+      await sysChat(`🕊️ ${me.kingdom_name} hat sich für 250 Gold freigekauft!`);
+      renderPanel();
+    }, 'btn small gold'));
+    row.appendChild(btn('🏴 Rebellion ausrufen!', async () => {
+      if (!confirm('Wirklich gegen deinen Lehnsherrn rebellieren? (+10 Rebellen-Truppen!)')) return;
+      me.vassal_of = null;
+      await sb.from('match_players').update({ vassal_of: null }).eq('id', me.id);
+      if (me.capital_x != null) {
+        const { data } = await sb.from('armies').insert({ match_id: S.match.id, player_id: me.id, unit_type: 'swordsman', count: 10, x: me.capital_x, y: me.capital_y }).select().single();
+        if (data) S.armies.push(data);
+      }
+      playSfx('horn');
+      await sysChat(`🏴 REBELLION! ${me.kingdom_name} erhebt sich gegen ${lord ? lord.kingdom_name : 'seinen Lehnsherrn'}!`);
+      renderPanel();
+    }, 'btn small danger'));
+    vbox.firstChild.appendChild(row);
+    el.appendChild(vbox);
+  }
   const allyBox = h(`<div class="info-box"><h3>🤝 Allianz</h3><p class="muted">Gleicher Name = verbündet (kein Angriff, geteilte Sicht).</p></div>`);
   const form = document.createElement('form'); form.className = 'row';
   form.innerHTML = `<input id="ally-input" maxlength="20" placeholder="Allianz-Name" value="${esc(me.alliance)}"><button class="btn small">OK</button>`;
