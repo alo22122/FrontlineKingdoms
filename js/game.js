@@ -25,24 +25,25 @@ const RES_NAME = { wood: 'Holz', gold: 'Gold', raw_food: 'Nahrung' };
 
 // Alle Gebäude werden direkt auf der Weltkarte gebaut
 const BUILDINGS = {
-  house:      { name: 'Haus',       cost: { wood: 25 },           desc: '+5 Einwohner-Limit (mehr Truppen & Produktion).' },
-  farm:       { name: 'Bauernhof',  cost: { wood: 30 },           prod: { raw_food: 2.0 }, desc: 'Produziert 🌾 Nahrung für Truppen.' },
-  lumberjack: { name: 'Holzfäller', cost: { wood: 20 },           prod: { wood: 2.0 },     desc: 'Produziert 🪵 Holz für Gebäude & Schiffe.' },
-  goldmine:   { name: 'Goldmine',   cost: { wood: 40 },           prod: { gold: 1.5 },     desc: 'Produziert 💰 Gold (2× auf Gold-Feldern).' },
-  barracks:   { name: 'Kaserne',    cost: { wood: 50, gold: 20 }, desc: 'Ermöglicht Truppen auszubilden.' },
-  tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, desc: 'Deckt Sicht auf & +15% Verteidigung.' },
-  fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
-  wall:       { name: 'Mauer',      cost: { wood: 10 },           desc: '+25 Garnison-Schutz in der Provinz.' },
-  blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
-  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' },
-  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' },
-  caravan:    { name: 'Karawane',   cost: { wood: 40, gold: 25 }, desc: 'Landhandel! Gold steigt mit Entfernung zu Verbündeten.' }
+  house:      { name: 'Haus',       cost: { wood: 25 },           buildTime: 8,  desc: '+5 Einwohner-Limit (mehr Truppen & Produktion).' },
+  farm:       { name: 'Bauernhof',  cost: { wood: 30 },           buildTime: 10, prod: { raw_food: 2.0 }, desc: 'Produziert 🌾 Nahrung für Truppen.' },
+  lumberjack: { name: 'Holzfäller', cost: { wood: 20 },           buildTime: 8,  prod: { wood: 2.0 },     desc: 'Produziert 🪵 Holz für Gebäude & Schiffe.' },
+  goldmine:   { name: 'Goldmine',   cost: { wood: 40 },           buildTime: 12, prod: { gold: 1.5 },     desc: 'Produziert 💰 Gold (2× auf Gold-Feldern).' },
+  barracks:   { name: 'Kaserne',    cost: { wood: 50, gold: 20 }, buildTime: 15, desc: 'Ermöglicht Truppen auszubilden.' },
+  tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, buildTime: 10, desc: 'Deckt Sicht auf & +15% Verteidigung.' },
+  fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, buildTime: 18, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
+  wall:       { name: 'Mauer',      cost: { wood: 10 },           buildTime: 5,  desc: '+25 Garnison-Schutz in der Provinz.' },
+  blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, buildTime: 14, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
+  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, buildTime: 14, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' },
+  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, buildTime: 14, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' },
+  caravan:    { name: 'Karawane',   cost: { wood: 40, gold: 25 }, buildTime: 12, desc: 'Landhandel! Gold steigt mit Entfernung zu Verbündeten.' }
 };
 
 const UNITS = {
   swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.5, trainTime: 8,  cost: { gold: 8, raw_food: 15 } },
   archer:    { name: 'Bogenschütze',   age: 2, power: 9,  speed: 1.5, trainTime: 10, cost: { wood: 15, gold: 10 }, note: '+50% auf Hügeln' },
   ship:      { name: 'Schiff',         age: 2, power: 6,  speed: 1.0, trainTime: 14, cost: { wood: 40 }, note: 'Startet im Hafen' },
+  warship:   { name: 'Kriegsschiff',   age: 3, power: 26, speed: 1.1, trainTime: 18, cost: { wood: 70, gold: 45 }, note: 'Beschießt Küsten (3 Tiles)' },
   spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.8, trainTime: 10, cost: { gold: 25 }, note: 'Späht Gegner & Karte aus' },
   knight:    { name: 'Ritter',         age: 3, power: 24, speed: 1.0, trainTime: 16, cost: { gold: 30, raw_food: 20 } },
   catapult:  { name: 'Katapult',       age: 4, power: 40, speed: 2.5, trainTime: 20, cost: { wood: 60, gold: 30 } },
@@ -68,8 +69,9 @@ const S = {
   authBusy: false, endShown: false, activeTab: 'build', drag: null,
   lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
-  alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: []
+  alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all'
 };
+const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
 // ---------------------------------------------------------------------------
 // HILFSFUNKTIONEN
@@ -146,13 +148,19 @@ function spriteUrl(canvas, key) {
   if (!spriteUrlCache.has(key)) spriteUrlCache.set(key, canvas.toDataURL());
   return spriteUrlCache.get(key);
 }
-function emblemCanvas(emblem, color, size = 32, pattern = 'solid') {
+function emblemCanvas(emblem, color, size = 32, pattern = 'solid', frame = 'gold') {
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   drawFlagBg(ctx, pattern, color, size);
   ctx.drawImage(getEmblemSprite(emblem, '#ffffff'), 0, 0, size, size);
+  const fColor = frame === 'gold' ? '#f5c542' : frame === 'silver' ? '#d0d7e2' : frame === 'iron' ? '#6c757d' : null;
+  if (fColor) {
+    ctx.strokeStyle = fColor;
+    ctx.lineWidth = Math.max(2, Math.floor(size / 10));
+    ctx.strokeRect(1, 1, size - 2, size - 2);
+  }
   return c;
 }
 function showScreen(id) {
@@ -370,7 +378,7 @@ async function reloadMatch() {
 async function reloadPlayers() {
   if (!S.match) return;
   const { data } = await sb.from('match_players')
-    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,flag_pattern,age,alliance,vassal_of,capital_level,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
+    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,flag_pattern,shield_frame,age,alliance,vassal_of,capital_level,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
     .eq('match_id', S.match.id).order('slot');
   if (!data) return;
   S.players = data;
@@ -492,7 +500,7 @@ function renderLobby() {
   for (const p of S.players) {
     const row = document.createElement('div');
     row.className = 'player-row'; row.style.borderLeftColor = p.color;
-    row.appendChild(emblemCanvas(p.emblem, p.color, 24, p.flag_pattern || 'solid'));
+    row.appendChild(emblemCanvas(p.emblem, p.color, 24, p.flag_pattern || 'solid', p.shield_frame || 'gold'));
     const info = document.createElement('div'); info.className = 'grow';
     info.innerHTML = `<b>${esc(p.kingdom_name)}</b><br><small>${esc(p.username)}${p.user_id === S.match.host_id ? ' · 👑 Host' : ''}${S.online.includes(p.user_id) ? ' · 🟢' : ''}</small>`;
     row.appendChild(info); list.appendChild(row);
@@ -506,6 +514,7 @@ function renderLobby() {
     S.lobbyFormFilled = true;
     $('my-kingdom').value = S.me.kingdom_name; $('my-color').value = S.me.color;
     if ($('my-pattern')) $('my-pattern').value = S.me.flag_pattern || 'solid';
+    if ($('my-frame')) $('my-frame').value = S.me.shield_frame || 'gold';
     S.myEmblem = S.me.emblem; renderEmblemPicker();
   }
   renderChat();
@@ -514,10 +523,11 @@ function renderLobby() {
 function renderEmblemPicker() {
   const box = $('emblem-picker'); box.innerHTML = '';
   const pat = $('my-pattern') ? $('my-pattern').value : 'solid';
+  const frm = $('my-frame') ? $('my-frame').value : 'gold';
   for (const [key, label] of Object.entries(EMBLEMS)) {
     const b = document.createElement('button');
     b.type = 'button'; b.title = label; b.className = key === S.myEmblem ? 'active' : '';
-    b.appendChild(emblemCanvas(key, $('my-color').value, 32, pat));
+    b.appendChild(emblemCanvas(key, $('my-color').value, 32, pat, frm));
     b.onclick = () => { S.myEmblem = key; playSfx('click'); renderEmblemPicker(); };
     box.appendChild(b);
   }
@@ -526,7 +536,8 @@ function renderEmblemPicker() {
 async function saveKingdom() {
   const kingdom_name = $('my-kingdom').value.trim().slice(0, 24) || S.me.kingdom_name;
   const flag_pattern = $('my-pattern') ? $('my-pattern').value : 'solid';
-  const { error } = await sb.from('match_players').update({ kingdom_name, color: $('my-color').value, emblem: S.myEmblem, flag_pattern }).eq('id', S.me.id);
+  const shield_frame = $('my-frame') ? $('my-frame').value : 'gold';
+  const { error } = await sb.from('match_players').update({ kingdom_name, color: $('my-color').value, emblem: S.myEmblem, flag_pattern, shield_frame }).eq('id', S.me.id);
   if (error) return toast(error.message, 'err');
   playSfx('coins'); toast('Königreich gespeichert!', 'ok'); reloadPlayers();
 }
@@ -585,9 +596,11 @@ async function startMatch() {
 
   for (let k = 0; k < S.players.length; k++) {
     const p = S.players[k];
-    const [cx, cy] = spawns[k];
+    let [cx, cy] = spawns[k];
     const pid = S.provOf ? S.provOf[M.idx(cx, cy)] : -1;
     if (pid >= 0 && S.provinces[pid]) {
+      cx = S.provinces[pid].cx;
+      cy = S.provinces[pid].cy;
       for (const ti of S.provinces[pid].tiles) territory[ti] = p.slot;
     } else {
       for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
@@ -698,7 +711,7 @@ function updateHud() {
 // EINFACHE WIRTSCHAFT (direkt auf der Weltkarte)
 // ---------------------------------------------------------------------------
 const myBuildings = () => (S.me ? S.buildings.filter((b) => b.player_id === S.me.id) : []);
-const countType = (type, p = S.me) => (p ? S.buildings.filter((b) => b.player_id === p.id && b.type === type).length : 0);
+const countType = (type, p = S.me) => (p ? S.buildings.filter((b) => b.player_id === p.id && b.type === type && isDone(b)).length : 0);
 const popCap = () => 5 + 5 * countType('house');
 
 function estimateRates() {
@@ -709,6 +722,7 @@ function estimateRates() {
   const mult = (0.8 + me.population * 0.04) * (S.match?.season === 'winter' ? 0.8 : 1);
   const d = { wood: 0.8 * capLv, gold: 0.4 * capLv, raw_food: 1.0 * capLv };
   for (const b of myBuildings()) {
+    if (!isDone(b)) continue;
     const def = BUILDINGS[b.type];
     if (!def?.prod) continue;
     const isGoldTile = S.terrain && S.terrain[M.idx(b.x, b.y)] === M.T.GOLD;
@@ -755,8 +769,8 @@ async function processTrainQueue() {
   S.trainQueue = S.trainQueue.filter((q) => now() < q.readyAt);
   for (const q of ready) {
     let sx = me.capital_x, sy = me.capital_y;
-    if (q.unitType === 'ship') {
-      const h = myBuildings().find((b) => b.type === 'harbor');
+    if (q.unitType === 'ship' || q.unitType === 'warship') {
+      const h = myBuildings().find((b) => b.type === 'harbor' && isDone(b));
       if (h) {
         const w = [[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy]) => [h.x+dx, h.y+dy]).find(([wx,wy]) => M.inBounds(wx,wy) && S.terrain[M.idx(wx,wy)] === M.T.WATER);
         sx = w ? w[0] : h.x; sy = w ? w[1] : h.y;
@@ -924,8 +938,8 @@ const totalArmyCount = () => (S.me ? S.armies.filter((a) => a.player_id === S.me
 async function trainUnits(type) {
   const me = S.me, u = UNITS[type];
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
-  if (type === 'ship' && countType('harbor') === 0) return toast('Schiffe brauchen einen ⚓ Hafen an der Küste!', 'err');
-  if (type !== 'ship' && countType('barracks') === 0) return toast('Baue zuerst eine ⚔️ Kaserne auf der Weltkarte!', 'err');
+  if ((type === 'ship' || type === 'warship') && countType('harbor') === 0) return toast('Schiffe brauchen einen fertigen ⚓ Hafen an der Küste!', 'err');
+  if (type !== 'ship' && type !== 'warship' && countType('barracks') === 0) return toast('Baue zuerst eine fertige ⚔️ Kaserne auf der Weltkarte!', 'err');
   if (me.age < u.age) return toast(`Benötigt ${AGE_NAMES[u.age]}.`, 'err');
   if (totalArmyCount() + BATCH > armyCap()) return toast(`Truppen-Limit (${armyCap()}) erreicht! Baue mehr 🏠 Häuser.`, 'err');
   if (!(await spend(u.cost, BATCH))) return;
@@ -975,10 +989,11 @@ async function moveArmy(a, tx, ty) {
     }
   }
 
-  // Katapult-Belagerung aus der Ferne (bis 3,5 Tiles Entfernung)
-  if (a.unit_type === 'catapult' && Math.hypot(tx - sx, ty - sy) <= 3.5 && pvpAllowed()) {
+  // Katapult- & Kriegsschiff-Belagerung aus der Ferne (bis 3,5 Tiles Entfernung)
+  if ((a.unit_type === 'catapult' || a.unit_type === 'warship') && Math.hypot(tx - sx, ty - sy) <= 3.5 && pvpAllowed()) {
+    const allowedTargets = a.unit_type === 'warship' ? ['harbor', 'fort', 'tower', 'wall'] : ['wall', 'fort', 'tower'];
     const targetBld = S.buildings.find((b) =>
-      ['wall', 'fort', 'tower'].includes(b.type) &&
+      allowedTargets.includes(b.type) &&
       b.player_id !== S.me.id && !allied(b.player_id, S.me.id) && !hasNap(S.me.id, b.player_id) &&
       Math.max(Math.abs(b.x - tx), Math.abs(b.y - ty)) <= 1
     );
@@ -1068,8 +1083,10 @@ async function sendPing(x, y) {
 function renderChat() {
   const html = S.chat.filter((m) => {
     const match = m.message.match(/^\[ALLY:([^\]]+)\]\s*/);
-    if (!match) return true;
-    return S.me && S.me.alliance && S.me.alliance === match[1];
+    if (match && !(S.me && S.me.alliance && S.me.alliance === match[1])) return false;
+    if (S.chatFilter === 'players' && !m.player_id) return false;
+    if (S.chatFilter === 'events' && m.player_id) return false;
+    return true;
   }).map((m) => {
     const t = new Date(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     const p = playerById(m.player_id);
@@ -1107,6 +1124,7 @@ async function authorityTick() {
     const t = now(), sp = speed();
     const arrived = S.armies.filter((a) => a.target_x != null && a.arrives_at && new Date(a.arrives_at).getTime() <= t);
     for (const a of arrived) if (S.armies.includes(a)) await resolveArrival(a);
+    await runCombatTick(pvpAllowed());
     if (S.territoryDirty && t - S.lastTerritoryWrite > 2000) await writeTerritory();
     if (t - S.lastSnapshot > 60000) {
       S.lastSnapshot = t;
@@ -1145,23 +1163,40 @@ function fight(att, def) {
 async function updateArmy(a, patch) { Object.assign(a, patch); await sb.from('armies').update(patch).eq('id', a.id); }
 async function deleteArmy(a) { S.armies = S.armies.filter((x) => x.id !== a.id); await sb.from('armies').delete().eq('id', a.id); }
 
+async function runCombatTick(pvp) {
+  if (!pvp) return;
+  const idle = S.armies.filter((a) => a.player_id && a.target_x == null && a.count > 0);
+  const busy = new Set();
+  for (const a of idle) {
+    if (busy.has(a.id) || !S.armies.includes(a)) continue;
+    const foe = idle.find((e) => !busy.has(e.id) && e.id !== a.id && S.armies.includes(e) && e.player_id !== a.player_id && !allied(a.player_id, e.player_id) && !hasNap(a.player_id, e.player_id) && Math.max(Math.abs(e.x - a.x), Math.abs(e.y - a.y)) <= 1);
+    if (!foe) continue;
+    busy.add(a.id); busy.add(foe.id);
+    const ap = armyPower(a, a.x, a.y), dp = armyPower(foe, foe.x, foe.y);
+    const lossA = Math.max(1, Math.ceil(a.count * clamp((dp / Math.max(1, ap)) * 0.22, 0.08, 0.35)));
+    const lossB = Math.max(1, Math.ceil(foe.count * clamp((ap / Math.max(1, dp)) * 0.22, 0.08, 0.35)));
+    addFx('boom', foe.x, foe.y, { dur: 700 });
+    addFx('text', foe.x, foe.y, { label: `-${lossB}`, color: '#ff6b6b', dur: 800 });
+    a.count -= lossA; foe.count -= lossB;
+    if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
+    if (foe.count <= 0) {
+      await deleteArmy(foe);
+      const pA = playerById(a.player_id), pB = playerById(foe.player_id);
+      if (pA && pB) await sysChat(`⚔️ ${pA.kingdom_name} besiegt eine Armee von ${pB.kingdom_name}!`);
+      if (a.count > 0 && pA) conquer(foe.x, foe.y, pA, pvp);
+    } else await updateArmy(foe, { count: foe.count });
+  }
+}
+
 async function resolveArrival(a) {
   const tx = a.target_x, ty = a.target_y, pvp = pvpAllowed(), attacker = playerById(a.player_id);
   let count = a.count;
-  const foes = S.armies.filter((e) => e.id !== a.id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && e.player_id !== a.player_id && !allied(e.player_id, a.player_id));
-  for (const e of foes) {
-    if ((a.player_id && e.player_id && (!pvp || hasNap(a.player_id, e.player_id))) || (!a.player_id && !e.player_id)) continue;
+  const foe = S.armies.find((e) => e.id !== a.id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && e.player_id && e.player_id !== a.player_id && !allied(e.player_id, a.player_id) && !hasNap(a.player_id, e.player_id));
+  if (foe && pvp) {
+    // Armeen treffen aufeinander -> langsamer Echtzeit-Kampf startet!
+    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
     addFx('boom', tx, ty, { dur: 900 });
-    const res = fight({ ...a, count, x: tx, y: ty }, e);
-    const defender = playerById(e.player_id);
-    if (res.attackerWins) {
-      count = res.remaining; await deleteArmy(e);
-      if (defender) await sysChat(`⚔️ ${attacker ? attacker.kingdom_name : 'Gegner'} besiegt eine Armee von ${defender.kingdom_name}!`);
-    } else {
-      await updateArmy(e, { count: res.remaining }); await deleteArmy(a);
-      if (attacker) await sysChat(`🛡️ Armee von ${attacker.kingdom_name} wurde geschlagen!`);
-      return;
-    }
+    return;
   }
   if (attacker) {
     if (a.unit_type === 'spy') {
@@ -1330,7 +1365,11 @@ function getTerrainCanvas() {
   if (!S.terrainCanvases[season]) {
     const c = document.createElement('canvas'); c.width = M.W * TILE; c.height = M.H * TILE;
     const ctx = c.getContext('2d');
-    for (let i = 0; i < M.N; i++) ctx.drawImage(getTerrainSprite(M.TERRAIN_KEYS[S.terrain[i]], season), (i % M.W) * TILE, Math.floor(i / M.W) * TILE);
+    for (let i = 0; i < M.N; i++) {
+      const x = i % M.W, y = (i - x) / M.W;
+      const v = ((x * 73856093 ^ y * 19349663) >>> 0) % 4;
+      ctx.drawImage(getTerrainSprite(M.TERRAIN_KEYS[S.terrain[i]], season, v), x * TILE, y * TILE);
+    }
     S.terrainCanvases[season] = c;
   }
   return S.terrainCanvases[season];
@@ -1415,26 +1454,34 @@ function render() {
     const i = M.idx(b.x, b.y);
     if (!S.explored[i] && !S.fogOff && b.player_id !== S.me.id) continue;
     const owner = playerById(b.player_id);
+    const done = isDone(b);
+    ctx.globalAlpha = done ? 1 : 0.55;
     if (b.type === 'wall') {
       const mask = (b.y > 0 && wallSet.has(i - M.W) ? 1 : 0) | (b.x < M.W - 1 && wallSet.has(i + 1) ? 2 : 0) | (b.y < M.H - 1 && wallSet.has(i + M.W) ? 4 : 0) | (b.x > 0 && wallSet.has(i - 1) ? 8 : 0);
       ctx.drawImage(getConnectedSprite('wall', mask), b.x * TILE, b.y * TILE, TILE, TILE);
     } else {
       ctx.drawImage(getBuildingSprite(b.type, owner ? owner.color : '#888'), b.x * TILE, b.y * TILE, TILE, TILE);
-      if (b.type === 'harbor' && isHarborBlockaded(b)) {
+      if (done && b.type === 'harbor' && isHarborBlockaded(b)) {
         ctx.fillStyle = '#ff5252'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
         ctx.fillText('⚓', b.x * TILE + TILE / 2, b.y * TILE - 1);
       }
     }
+    ctx.globalAlpha = 1;
+    if (!done) {
+      const total = ((BUILDINGS[b.type]?.buildTime || 8) * 1000) / speed();
+      const prog = clamp(1 - (new Date(b.construction_end_at).getTime() - now()) / total, 0, 1);
+      ctx.fillStyle = '#000a'; ctx.fillRect(b.x * TILE, b.y * TILE + TILE - 2, TILE, 2);
+      ctx.fillStyle = '#e8b64c'; ctx.fillRect(b.x * TILE, b.y * TILE + TILE - 2, TILE * prog, 2);
+    }
   }
 
-  // Hauptstädte (Burg + Flagge)
+  // Hauptstädte (Burg + Flagge mit Rahmen)
   for (const p of S.players) {
     if (p.capital_x == null || p.is_eliminated) continue;
     const i = M.idx(p.capital_x, p.capital_y);
     if (!S.explored[i] && !S.fogOff) continue;
     ctx.drawImage(getBuildingSprite('castle', p.color), p.capital_x * TILE - 3, p.capital_y * TILE - 3, TILE + 6, TILE + 6);
-    drawFlagBg(ctx, p.flag_pattern || 'solid', p.color, 10);
-    ctx.drawImage(emblemCanvas(p.emblem, p.color, 10, p.flag_pattern || 'solid'), p.capital_x * TILE - 2, p.capital_y * TILE - 12);
+    ctx.drawImage(emblemCanvas(p.emblem, p.color, 10, p.flag_pattern || 'solid', p.shield_frame || 'gold'), p.capital_x * TILE - 2, p.capital_y * TILE - 12);
   }
 
   // Allianz-Pings auf der Karte
@@ -1631,9 +1678,13 @@ async function confirmPendingBuilds() {
     for (const k in cost) totalCost[k] = (totalCost[k] || 0) + cost[k];
   }
   if (!(await spend(totalCost))) return;
-  const rows = S.pendingBuilds.map((pb) => ({
-    match_id: S.match.id, player_id: S.me.id, layer: 'world', type: pb.type, x: pb.x, y: pb.y, construction_end_at: new Date().toISOString()
-  }));
+  const rows = S.pendingBuilds.map((pb) => {
+    const bt = pb.type === 'bridge' ? 6 : (BUILDINGS[pb.type]?.buildTime || 8);
+    return {
+      match_id: S.match.id, player_id: S.me.id, layer: 'world', type: pb.type, x: pb.x, y: pb.y,
+      construction_end_at: new Date(now() + (bt * 1000) / speed()).toISOString()
+    };
+  });
   const { data, error } = await sb.from('buildings').insert(rows).select();
   if (error) { await rpcAdd(S.me.id, totalCost, true); return toast(error.message, 'err'); }
   if (data) {
@@ -1880,7 +1931,7 @@ function panelArmy(el) {
   for (const [type, u] of Object.entries(UNITS)) {
     if (type === 'king') continue;
     const locked = me.age < u.age;
-    const needBld = type === 'ship' ? countType('harbor') === 0 : !hasBarracks;
+    const needBld = (type === 'ship' || type === 'warship') ? countType('harbor') === 0 : !hasBarracks;
     const row = document.createElement('div'); row.className = 'army-row';
     const total = Object.fromEntries(Object.entries(u.cost).map(([k, v]) => [k, v * BATCH]));
     row.innerHTML = `<img src="${spriteUrl(getUnitSprite(type, me.color), 'u' + type + me.color)}" alt=""><div class="grow"><b>${u.name}</b> · ⚔️${u.power} · ⏳${u.trainTime}s<br><span class="muted">${costText(total)}${u.note ? ' · ' + u.note : ''}${locked ? ' · 🔒 ' + AGE_NAMES[u.age] : ''}</span></div>`;
@@ -1924,6 +1975,28 @@ function panelArmy(el) {
 
 function panelDiplo(el) {
   const me = S.me;
+  const incTribute = S.match?.tributes?.[me.id];
+  if (incTribute && incTribute.from) {
+    const fromP = playerById(incTribute.from);
+    const tbox = h(`<div class="info-box"><h3>🕊️ Tribut-Forderung</h3><p class="muted"><b>${fromP ? esc(fromP.kingdom_name) : 'Ein König'}</b> fordert ${incTribute.amount}💰 für einen 10-Minuten-NAP.</p></div>`);
+    const row = document.createElement('div'); row.className = 'row';
+    row.appendChild(btn(`💰 Zahlen (${incTribute.amount}💰)`, async () => {
+      if (!(await spend({ gold: incTribute.amount }))) return;
+      if (fromP) await rpcAdd(fromP.id, { gold: incTribute.amount }, true);
+      const tributes = { ...(S.match.tributes || {}) }; delete tributes[me.id];
+      const naps = { ...(S.match.naps || {}), [napKey(me.id, incTribute.from)]: now() + 600000 };
+      await sb.from('matches').update({ tributes, naps }).eq('id', S.match.id);
+      playSfx('coins');
+      await sysChat(`🕊️ ${me.kingdom_name} zahlt ${incTribute.amount}💰 Tribut an ${fromP ? fromP.kingdom_name : 'den Forderer'} (10m NAP)!`);
+      renderPanel();
+    }, 'btn small primary'));
+    row.appendChild(btn('✖ Ablehnen', async () => {
+      const tributes = { ...(S.match.tributes || {}) }; delete tributes[me.id];
+      await sb.from('matches').update({ tributes }).eq('id', S.match.id);
+      renderPanel();
+    }, 'btn small danger'));
+    tbox.firstChild.appendChild(row); el.appendChild(tbox);
+  }
   if (me.vassal_of) {
     const lord = playerById(me.vassal_of);
     const vbox = h(`<div class="info-box"><h3>👑 Du bist Vasall von ${lord ? esc(lord.kingdom_name) : 'einem König'}</h3><p class="muted">Du zahlst 25% Gold-Steuer. Kaufe dich frei oder starte eine Rebellion!</p></div>`);
@@ -1986,7 +2059,7 @@ function panelDiplo(el) {
     const lord = p.vassal_of ? playerById(p.vassal_of) : null;
     const box = document.createElement('div'); box.className = 'info-box'; box.style.borderLeft = `5px solid ${p.color}`;
     const head = document.createElement('div'); head.className = 'row';
-    head.appendChild(emblemCanvas(p.emblem, p.color, 24, p.flag_pattern || 'solid'));
+    head.appendChild(emblemCanvas(p.emblem, p.color, 24, p.flag_pattern || 'solid', p.shield_frame || 'gold'));
     head.appendChild(h(`<div><b>${esc(p.kingdom_name)}</b>${isMe ? ' (Du)' : ''}${ally ? ' 🤝' : ''}${p.is_eliminated ? ' ☠️' : ''}<br><span class="muted">${AGE_NAMES[p.age]} · 🗺️ ${(p.territory_percent || 0).toFixed(1)}%${lord ? ' · 👑 Vasall von ' + esc(lord.kingdom_name) : ''}${p.alliance ? ' · „' + esc(p.alliance) + '“' : ''}</span></div>`));
     box.appendChild(head);
     if (!isMe && !p.is_eliminated) {
@@ -2001,6 +2074,12 @@ function panelDiplo(el) {
           'btn small danger',
           ws !== 'none'
         ));
+        actions.appendChild(btn('🕊️ Tribut (60💰)', async () => {
+          const tributes = { ...(S.match.tributes || {}), [p.id]: { from: me.id, amount: 60 } };
+          await sb.from('matches').update({ tributes }).eq('id', S.match.id);
+          playSfx('coins');
+          toast(`🕊️ Tribut-Forderung an ${p.kingdom_name} gesendet!`, 'ok');
+        }, 'btn small'));
       }
       const sel = document.createElement('select'); sel.style.width = '80px'; sel.style.display = 'inline-block';
       sel.innerHTML = ['wood', 'gold', 'raw_food'].map((r) => `<option value="${r}">${RES_ICON[r]}</option>`).join('');
@@ -2098,6 +2177,7 @@ function bindStatic() {
   $('btn-save-kingdom').onclick = saveKingdom;
   $('my-color').oninput = renderEmblemPicker;
   if ($('my-pattern')) $('my-pattern').onchange = renderEmblemPicker;
+  if ($('my-frame')) $('my-frame').onchange = renderEmblemPicker;
   $('btn-leave-lobby').onclick = leaveLobby;
   $('btn-admin-lobby').onclick = openAdminPanel;
   $('btn-start').onclick = startMatch;
@@ -2127,6 +2207,21 @@ function bindStatic() {
   $('btn-confirm-build').onclick = confirmPendingBuilds;
   $('btn-cancel-mode').onclick = () => { S.buildType = null; S.bridgeMode = false; S.selectedArmyId = null; S.pendingBuilds = []; updateModeHint(); renderPanel(); };
   $('btn-admin').onclick = openAdminPanel;
+  $('btn-fullscreen').onclick = () => {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      const el = document.documentElement;
+      (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    }
+  };
+  document.querySelectorAll('[data-cfilter]').forEach((b) => {
+    b.onclick = () => {
+      S.chatFilter = b.dataset.cfilter;
+      document.querySelectorAll('[data-cfilter]').forEach((x) => x.classList.toggle('active', x === b));
+      renderChat();
+    };
+  });
   $('btn-mute').onclick = toggleMute; $('btn-mute-global').onclick = toggleMute;
   $('btn-leave-game').onclick = () => { if (confirm('Zurück zum Menü?')) showMenu(); };
   $('btn-zoom-in').onclick = () => { const c = $('game-canvas'); zoomAt(c.width / 2, c.height / 2, 1.25); };
