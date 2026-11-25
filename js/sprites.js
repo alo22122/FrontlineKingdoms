@@ -397,7 +397,12 @@ export function getUnitSprite(unitType, color = '#e74c3c') {
   } else {
     // Standard Humanoid (villager, swordsman, archer, knight, spy)
     px(ctx, 6, 2, '#f0c4a0', 4, 4); // Kopf
-    if (unitType === 'knight' || unitType === 'swordsman') {
+    if (unitType === 'king') {
+      px(ctx, 5, 0, '#ffd23f', 6, 2); // Goldene Krone
+      px(ctx, 5, 0, '#ffffff', 1, 1);
+      px(ctx, 10, 0, '#ffffff', 1, 1);
+      px(ctx, 3, 6, '#ffd23f', 10, 6); // Königlicher Mantel
+    } else if (unitType === 'knight' || unitType === 'swordsman') {
       px(ctx, 5, 1, '#9aa3b0', 6, 3); // Helm
     } else if (unitType === 'spy') {
       px(ctx, 5, 1, '#262930', 6, 4); // Kapuze
@@ -408,8 +413,8 @@ export function getUnitSprite(unitType, color = '#e74c3c') {
     px(ctx, 5, 12, '#38302e', 2, 3);
     px(ctx, 9, 12, '#38302e', 2, 3);
 
-    if (unitType === 'swordsman' || unitType === 'knight') {
-      px(ctx, 12, 4, '#dce3eb', 2, 6); // Schwert
+    if (unitType === 'swordsman' || unitType === 'knight' || unitType === 'king') {
+      px(ctx, 12, 4, unitType === 'king' ? '#ffd23f' : '#dce3eb', 2, 6); // Schwert
     } else if (unitType === 'archer') {
       px(ctx, 12, 4, '#8a592d', 2, 7); // Bogen
     }
