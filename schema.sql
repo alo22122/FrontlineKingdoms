@@ -196,6 +196,9 @@ end;
 $$;
 
 grant execute on function public.add_resources(uuid, integer, integer, integer, integer, integer, boolean) to anon, authenticated;
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- ROW LEVEL SECURITY  (offenes Schul-/Freundesspiel: alle dürfen lesen & schreiben)
