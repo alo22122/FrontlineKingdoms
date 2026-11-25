@@ -39,67 +39,70 @@ function drawPattern(size, rows, palette) {
 // ============================================================================
 // TERRAIN SPRITES (16x16)
 // ============================================================================
-export function getTerrainSprite(type, season = 'summer') {
-  const key = `terrain_${type}_${season}`;
+export function getTerrainSprite(type, season = 'summer', variant = 0) {
+  const v = variant & 3;
+  const key = `terrain_${type}_${season}_${v}`;
   if (spriteCache.has(key)) return spriteCache.get(key);
 
   const c = createCanvas(16);
   const ctx = c.getContext('2d');
   const winter = season === 'winter';
+  const ox = (v * 5) % 12;
+  const oy = (v * 7) % 12;
 
   if (type === 'grass') {
-    px(ctx, 0, 0, winter ? '#d7e7f5' : '#4a8c38', 16, 16);
-    px(ctx, 1, 2, winter ? '#c3d7eb' : '#3f7b2f', 3, 1);
-    px(ctx, 9, 4, winter ? '#eef6fc' : '#63ab4a', 3, 1);
-    px(ctx, 4, 9, winter ? '#c3d7eb' : '#3d772d', 2, 2);
-    px(ctx, 11, 12, winter ? '#eef6fc' : '#63ab4a', 2, 1);
-    px(ctx, 7, 14, winter ? '#e3effa' : '#589c42', 2, 1);
+    const bases = winter ? ['#d7e7f5','#d2e3f2','#dcebf7','#cfe0f0'] : ['#4a8c38','#478736','#4e913b','#448333'];
+    px(ctx, 0, 0, bases[v], 16, 16);
+    px(ctx, (1 + ox) % 14, (2 + oy) % 14, winter ? '#c3d7eb' : '#3d782d', 3, 1);
+    px(ctx, (9 + ox) % 13, (4 + oy) % 14, winter ? '#eef6fc' : '#63ab4a', 3, 1);
+    px(ctx, (4 + oy) % 14, (9 + ox) % 14, winter ? '#c3d7eb' : '#3b732b', 2, 2);
+    if (v === 1) px(ctx, 11, 11, winter ? '#eef6fc' : '#f2d14b', 1, 1); // kleine Blume
+    if (v === 2) px(ctx, 3, 12, winter ? '#b8cde0' : '#73b856', 2, 1);
+    if (v === 3) px(ctx, 12, 3, winter ? '#eef6fc' : '#d65a4f', 1, 1);
   } else if (type === 'forest') {
-    px(ctx, 0, 0, winter ? '#c8dceb' : '#356b26', 16, 16);
-    // Schatten
-    px(ctx, 2, 12, 'rgba(0,0,0,0.2)', 6, 2);
-    px(ctx, 9, 13, 'rgba(0,0,0,0.2)', 6, 2);
-    // Baum 1
-    px(ctx, 4, 8, '#5a3821', 2, 5);
-    px(ctx, 2, 3, winter ? '#97bdd4' : '#204a17', 6, 6);
-    px(ctx, 3, 2, winter ? '#e6f2fa' : '#2f6e22', 4, 3);
-    px(ctx, 3, 2, winter ? '#ffffff' : '#458f34', 2, 2);
-    // Baum 2
-    px(ctx, 11, 9, '#4f301b', 2, 5);
-    px(ctx, 9, 5, winter ? '#85adc7' : '#1b4013', 6, 5);
-    px(ctx, 10, 4, winter ? '#d8ebf7' : '#2c6320', 4, 2);
+    const bases = winter ? ['#c8dceb','#c2d7e8','#cde0ef','#bfd4e5'] : ['#356b26','#326624','#397029','#2f6122'];
+    px(ctx, 0, 0, bases[v], 16, 16);
+    const t1x = 2 + (v % 2) * 2, t2x = 9 - (v % 2);
+    px(ctx, t1x, 12, 'rgba(0,0,0,0.2)', 6, 2);
+    px(ctx, t2x, 13, 'rgba(0,0,0,0.2)', 6, 2);
+    px(ctx, t1x + 2, 8, '#5a3821', 2, 5);
+    px(ctx, t1x, 3, winter ? '#97bdd4' : '#204a17', 6, 6);
+    px(ctx, t1x + 1, 2, winter ? '#e6f2fa' : '#2f6e22', 4, 3);
+    px(ctx, t2x + 2, 9, '#4f301b', 2, 5);
+    px(ctx, t2x, 5, winter ? '#85adc7' : '#1b4013', 6, 5);
+    px(ctx, t2x + 1, 4, winter ? '#d8ebf7' : '#2c6320', 4, 2);
   } else if (type === 'water') {
-    px(ctx, 0, 0, winter ? '#4674a1' : '#1f5a9c', 16, 16);
-    px(ctx, 2, 3, winter ? '#89b8e0' : '#367ec9', 5, 1);
-    px(ctx, 3, 4, winter ? '#b3d6f5' : '#5ea3eb', 3, 1);
-    px(ctx, 8, 10, winter ? '#a6cef0' : '#4a90db', 6, 1);
-    px(ctx, 3, 13, winter ? '#75a6d1' : '#367ec9', 4, 1);
+    const bases = winter ? ['#4674a1','#42709c','#4a78a6','#3e6c96'] : ['#1f5a9c','#1d5594','#225fa3','#1b518c'];
+    px(ctx, 0, 0, bases[v], 16, 16);
+    px(ctx, (2 + ox) % 11, (3 + oy) % 13, winter ? '#89b8e0' : '#367ec9', 5, 1);
+    px(ctx, (8 + oy) % 10, (10 + ox) % 13, winter ? '#a6cef0' : '#4a90db', 5, 1);
+    if (v % 2 === 0) px(ctx, 3, 13, winter ? '#75a6d1' : '#367ec9', 4, 1);
   } else if (type === 'mountain') {
     px(ctx, 0, 0, winter ? '#b3c4d4' : '#55634e', 16, 16);
-    px(ctx, 2, 12, '#4a515c', 12, 4);
-    px(ctx, 3, 8, '#606875', 10, 5);
-    px(ctx, 5, 4, '#798291', 6, 5);
-    px(ctx, 8, 5, '#5b6370', 3, 8); // Schattenseite rechts
-    // Schneegipfel
-    px(ctx, 5, 2, '#eef5fc', 6, 3);
-    px(ctx, 6, 1, '#ffffff', 4, 2);
+    const shift = v % 2;
+    px(ctx, 2 + shift, 12, '#4a515c', 12 - shift, 4);
+    px(ctx, 3 + shift, 8, '#606875', 10 - shift, 5);
+    px(ctx, 5 + shift, 4, '#798291', 6, 5);
+    px(ctx, 8 + shift, 5, '#5b6370', 3, 8);
+    px(ctx, 5 + shift, 2, '#eef5fc', 6, 3);
+    px(ctx, 6 + shift, 1, '#ffffff', 4, 2);
   } else if (type === 'hill') {
     px(ctx, 0, 0, winter ? '#c8dceb' : '#55913f', 16, 16);
-    px(ctx, 2, 8, winter ? '#aec4d9' : '#6ea855', 12, 5);
-    px(ctx, 4, 6, winter ? '#dceaf5' : '#85bd68', 8, 3);
-    px(ctx, 5, 6, winter ? '#eef6fc' : '#9bd17d', 4, 1);
-    px(ctx, 3, 13, winter ? '#96acc2' : '#3f6e2e', 10, 1);
+    const sx = v % 3;
+    px(ctx, 2 + sx, 8, winter ? '#aec4d9' : '#6ea855', 11, 5);
+    px(ctx, 4 + sx, 6, winter ? '#dceaf5' : '#85bd68', 7, 3);
+    px(ctx, 3 + sx, 13, winter ? '#96acc2' : '#3f6e2e', 9, 1);
   } else if (type === 'desert') {
-    px(ctx, 0, 0, '#d8b467', 16, 16);
-    px(ctx, 2, 5, '#c29846', 6, 1);
-    px(ctx, 8, 10, '#ebd08d', 6, 1);
-    px(ctx, 4, 13, '#c29846', 4, 1);
-    px(ctx, 11, 3, '#edd598', 2, 1);
+    const bases = ['#d8b467','#d4af61','#dcb96d','#cfa95b'];
+    px(ctx, 0, 0, bases[v], 16, 16);
+    px(ctx, (2 + ox) % 10, (5 + oy) % 13, '#c29846', 6, 1);
+    px(ctx, (8 + oy) % 10, (10 + ox) % 13, '#ebd08d', 6, 1);
+    if (v === 2) px(ctx, 11, 3, '#6b8e3d', 2, 3); // kleiner Kaktus/Strauch
   } else if (type === 'gold') {
     px(ctx, 0, 0, winter ? '#c0d1e0' : '#53644d', 16, 16);
     px(ctx, 3, 6, '#656d78', 10, 7);
-    px(ctx, 5, 7, '#f5c542', 3, 3);
-    px(ctx, 9, 9, '#ffd966', 3, 3);
+    px(ctx, 4 + (v % 2), 7, '#f5c542', 3, 3);
+    px(ctx, 9, 8 + (v % 2), '#ffd966', 3, 3);
     px(ctx, 6, 7, '#fff3b0', 1, 1);
     px(ctx, 10, 9, '#fff3b0', 1, 1);
   } else if (type === 'bridge') {
@@ -388,6 +391,14 @@ export function getUnitSprite(unitType, color = '#e74c3c') {
     px(ctx, 7, 3, '#543218', 2, 8);
     px(ctx, 4, 4, '#f5f0e6', 7, 5);
     px(ctx, 6, 5, color, 3, 3);
+  } else if (unitType === 'warship') {
+    px(ctx, 1, 10, '#4f2e14', 14, 4);
+    px(ctx, 3, 14, '#361e0c', 10, 1);
+    px(ctx, 5, 2, '#543218', 2, 9);
+    px(ctx, 10, 4, '#543218', 2, 7);
+    px(ctx, 3, 3, '#f5f0e6', 5, 5);
+    px(ctx, 9, 5, color, 5, 4);
+    px(ctx, 12, 9, '#9aa3b0', 3, 2); // Bug-Katapult
   } else if (unitType === 'catapult') {
     px(ctx, 2, 10, '#6e421f', 12, 3);
     px(ctx, 3, 12, '#3b220e', 3, 3);
