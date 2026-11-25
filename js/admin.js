@@ -188,7 +188,7 @@ function renderAdmin() {
 // MAP-EDITOR
 // ---------------------------------------------------------------------------
 const ED = { grid: null, brush: 1, size: 3, painting: false, bound: false };
-const EDITOR_PX = 2;
+const EDITOR_PX = 1;
 
 export async function openMapEditor() {
   const { M } = api;
