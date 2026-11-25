@@ -50,7 +50,7 @@ create table if not exists public.matches (
     status         text not null default 'lobby'
                    check (status in ('lobby','running','paused','finished')),
     map_type       text not null default 'continents'
-                   check (map_type in ('continents','archipelago','valley','desert','custom')),
+                   check (map_type in ('continents','archipelago','valley','desert','world','europe','germany','turkey','rome','ottoman','custom')),
     map_seed       integer not null default 12345,
     custom_map_id  uuid references public.custom_maps(id) on delete set null,
     game_speed     integer not null default 1 check (game_speed in (1,2,5,10)),
