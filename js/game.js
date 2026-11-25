@@ -25,18 +25,22 @@ const RES_NAME = { wood: 'Holz', gold: 'Gold', raw_food: 'Nahrung' };
 
 // Alle Gebäude werden direkt auf der Weltkarte gebaut
 const BUILDINGS = {
-  house:      { name: 'Haus',       cost: { wood: 25 },           desc: '+5 Einwohner-Limit (schnellere Produktion).' },
+  house:      { name: 'Haus',       cost: { wood: 25 },           desc: '+5 Einwohner-Limit (mehr Truppen & Produktion).' },
   farm:       { name: 'Bauernhof',  cost: { wood: 30 },           prod: { raw_food: 2.0 }, desc: 'Produziert 🌾 Nahrung für Truppen.' },
   lumberjack: { name: 'Holzfäller', cost: { wood: 20 },           prod: { wood: 2.0 },     desc: 'Produziert 🪵 Holz für Gebäude & Schiffe.' },
   goldmine:   { name: 'Goldmine',   cost: { wood: 40 },           prod: { gold: 1.5 },     desc: 'Produziert 💰 Gold (2× auf Gold-Feldern).' },
   barracks:   { name: 'Kaserne',    cost: { wood: 50, gold: 20 }, desc: 'Ermöglicht Truppen auszubilden.' },
-  tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, desc: 'Deckt Sicht auf & +15% Kampfkraft.' }
+  tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, desc: 'Deckt Sicht auf & +15% Verteidigung.' },
+  fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
+  blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
+  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' }
 };
 
 const UNITS = {
   swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.5, cost: { gold: 8, raw_food: 15 } },
   archer:    { name: 'Bogenschütze',   age: 2, power: 9,  speed: 1.5, cost: { wood: 15, gold: 10 }, note: '+50% auf Hügeln' },
   ship:      { name: 'Schiff',         age: 2, power: 6,  speed: 1.0, cost: { wood: 40 }, note: 'Fährt über Wasser' },
+  spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.8, cost: { gold: 25 }, note: 'Späht Gegner & Karte aus' },
   knight:    { name: 'Ritter',         age: 3, power: 24, speed: 1.0, cost: { gold: 30, raw_food: 20 } },
   catapult:  { name: 'Katapult',       age: 4, power: 40, speed: 2.5, cost: { wood: 60, gold: 30 } }
 };
@@ -748,11 +752,15 @@ async function ageUp() {
   renderPanel();
 }
 
+const armyCap = () => (S.me ? S.me.population * 3 : 15);
+const totalArmyCount = () => (S.me ? S.armies.filter((a) => a.player_id === S.me.id).reduce((s, a) => s + a.count, 0) : 0);
+
 async function trainUnits(type) {
   const me = S.me, u = UNITS[type];
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
   if (countType('barracks') === 0) return toast('Baue zuerst eine ⚔️ Kaserne auf der Weltkarte!', 'err');
   if (me.age < u.age) return toast(`Benötigt ${AGE_NAMES[u.age]}.`, 'err');
+  if (totalArmyCount() + BATCH > armyCap()) return toast(`Truppen-Limit (${armyCap()}) erreicht! Baue mehr 🏠 Häuser.`, 'err');
   if (!(await spend(u.cost, BATCH))) return;
   const home = S.armies.find((a) => a.player_id === me.id && a.unit_type === type && a.target_x == null && a.x === me.capital_x && a.y === me.capital_y);
   if (home) {
@@ -904,8 +912,11 @@ function armyPower(a, x, y) {
   if (a.unit_type === 'archer' && tile === M.T.HILL) pw *= 1.5;
   if (!a.player_id && tile === M.T.FOREST) pw *= 1.15;
   const p = playerById(a.player_id);
-  if (p && S.territory[M.idx(x, y)] === p.slot) {
-    pw *= 1 + Math.min(0.6, countType('tower', p) * 0.15);
+  if (p) {
+    pw *= 1 + Math.min(0.5, countType('blacksmith', p) * 0.1);
+    if (S.territory[M.idx(x, y)] === p.slot) {
+      pw *= 1.2 + Math.min(0.6, countType('tower', p) * 0.15) + Math.min(0.9, countType('fort', p) * 0.3);
+    }
   }
   return pw;
 }
@@ -939,8 +950,43 @@ async function resolveArrival(a) {
       return;
     }
   }
-  await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-  if (attacker) conquer(tx, ty, attacker, pvp);
+  if (attacker) {
+    if (a.unit_type === 'spy') {
+      await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+      const ownerSlot = S.territory[M.idx(tx, ty)];
+      const op = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
+      if (op && op.id !== attacker.id) S.spied[op.id] = now() + 120000;
+      toast('🕵️ Spion hat das Gebiet ausgekundschaftet!', 'ok');
+      return;
+    }
+    const tileOwnerSlot = S.territory[M.idx(tx, ty)];
+    if (tileOwnerSlot !== attacker.slot) {
+      const tile = S.terrain[M.idx(tx, ty)];
+      const ownerP = tileOwnerSlot >= 0 ? playerBySlot(tileOwnerSlot) : null;
+      if (ownerP && allied(ownerP.id, attacker.id)) {
+        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+        return;
+      }
+      if (ownerP && !pvp) {
+        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+        return;
+      }
+      const garrison = ownerP
+        ? 60 + countType('fort', ownerP) * 50 + countType('tower', ownerP) * 25
+        : (tile === M.T.GOLD ? 85 : tile === M.T.HILL || tile === M.T.FOREST ? 60 : 40);
+      const ap = armyPower({ ...a, count }, tx, ty);
+      if (ap < garrison) {
+        await deleteArmy(a);
+        await sysChat(`🛡️ Angriff von ${attacker.kingdom_name} scheiterte an der Provinz-Garnison (Kraft ${Math.round(ap)} < ${garrison})!`);
+        return;
+      }
+      count = Math.max(1, Math.ceil(count * (1 - (garrison / ap) * 0.55)));
+    }
+    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+    conquer(tx, ty, attacker, pvp);
+  } else {
+    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+  }
 }
 
 async function grantLoot(p, e) {
@@ -962,7 +1008,10 @@ function conquer(tx, ty, p, pvp) {
         S.territory[i] = p.slot; gained++;
       }
     }
-    if (gained > 0) toast(`🏳️ Provinz „${prov.name}“ erobert!`, 'ok');
+    if (gained > 0) {
+      toast(`🏳️ Provinz „${prov.name}“ erobert!`, 'ok');
+      if (prov.goldBonus > 0) rpcAdd(p.id, { gold: 25 }, true);
+    }
   }
   S.territoryDirty = true; S.territoryVersion++;
 }
@@ -1390,7 +1439,7 @@ function panelBuild(el) {
 
 function panelArmy(el) {
   const me = S.me, hasBarracks = countType('barracks') > 0;
-  el.appendChild(h(`<h3>🛡️ Truppen (${BATCH}er Trupps)</h3>${hasBarracks ? '' : '<p class="muted">⚠️ Baue zuerst eine <b>⚔️ Kaserne</b> unter Bauen.</p>'}`));
+  el.appendChild(h(`<h3>🛡️ Truppen (${totalArmyCount()}/${armyCap()})</h3>${hasBarracks ? '' : '<p class="muted">⚠️ Baue zuerst eine <b>⚔️ Kaserne</b> unter Bauen.</p>'}`));
   for (const [type, u] of Object.entries(UNITS)) {
     const locked = me.age < u.age;
     const row = document.createElement('div'); row.className = 'army-row';
@@ -1431,6 +1480,19 @@ function panelDiplo(el) {
   form.innerHTML = `<input id="ally-input" maxlength="20" placeholder="Allianz-Name" value="${esc(me.alliance)}"><button class="btn small">OK</button>`;
   form.onsubmit = (e) => { e.preventDefault(); setAlliance($('ally-input').value); };
   allyBox.firstChild.appendChild(form); el.appendChild(allyBox);
+
+  const hasMarket = countType('market') > 0;
+  const mk = h(`<div class="info-box"><h3>⚖️ Marktplatz</h3>${hasMarket ? '<p class="muted">100 Waren → 35💰 oder 50💰 → 100 Waren.</p>' : '<p class="muted">Baue einen <b>⚖️ Marktplatz</b> zum Handeln.</p>'}</div>`);
+  if (hasMarket) {
+    for (const r of ['wood', 'raw_food']) {
+      const row = document.createElement('div'); row.className = 'row'; row.style.margin = '4px 0';
+      row.appendChild(h(`<span style="width:75px;display:inline-block">${RES_ICON[r]} ${RES_NAME[r]}</span>`));
+      row.appendChild(btn('Verkaufen', async () => { if (await spend({ [r]: 100 })) { await rpcAdd(me.id, { gold: 35 }, true); me.gold += 35; playSfx('coins'); } }));
+      row.appendChild(btn('Kaufen', async () => { if (await spend({ gold: 50 })) { await rpcAdd(me.id, { [r]: 100 }, true); me[r] += 100; playSfx('coins'); } }));
+      mk.firstChild.appendChild(row);
+    }
+  }
+  el.appendChild(mk);
 
   el.appendChild(h('<h3>👑 Königreiche (Ziel: 70%)</h3>'));
   for (const p of [...S.players].sort((a, b) => (b.territory_percent || 0) - (a.territory_percent || 0))) {
