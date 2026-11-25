@@ -253,6 +253,14 @@ export function getBuildingSprite(type, color = '#c94a38') {
       px(ctx, 22, 6, '#543218', 2, 10);
       px(ctx, 18, 22, '#f5c542', 5, 4);
       break;
+    case 'caravan':
+      px(ctx, 3, 18, '#7a4e28', 22, 7);
+      px(ctx, 6, 10, '#f0e2c8', 16, 9);
+      px(ctx, 6, 10, color, 16, 3);
+      px(ctx, 6, 24, '#3b220e', 5, 5);
+      px(ctx, 18, 24, '#3b220e', 5, 5);
+      px(ctx, 25, 16, '#a87040', 5, 6);
+      break;
     case 'wall':
       px(ctx, 0, 8, '#7d8590', 32, 20);
       px(ctx, 0, 4, '#666e78', 6, 5);
