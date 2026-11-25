@@ -394,30 +394,6 @@ export function getUnitSprite(unitType, color = '#e74c3c') {
     px(ctx, 10, 12, '#3b220e', 3, 3);
     px(ctx, 6, 4, '#8a592d', 2, 7);
     px(ctx, 4, 3, '#9aa3b0', 4, 3);
-  } else if (unitType === 'camp') {
-    // Banditenlager: Zelt + Lagerfeuer
-    px(ctx, 2, 13, 'rgba(0,0,0,0.35)', 12, 2);
-    px(ctx, 7, 2, '#5c2a2a', 2, 2);
-    px(ctx, 5, 4, '#7a3030', 6, 3);
-    px(ctx, 3, 7, '#8f3a3a', 10, 3);
-    px(ctx, 2, 10, '#a34545', 12, 3);
-    px(ctx, 7, 9, '#2b1a1a', 2, 4);
-    px(ctx, 12, 12, '#ff8c1a', 3, 2);
-    px(ctx, 13, 11, '#ffd23f', 1, 1);
-  } else if (unitType === 'ruin') {
-    px(ctx, 2, 13, 'rgba(0,0,0,0.3)', 12, 2);
-    px(ctx, 2, 6, '#8d8f94', 3, 8);
-    px(ctx, 11, 4, '#8d8f94', 3, 10);
-    px(ctx, 5, 10, '#a3a6ab', 6, 4);
-    px(ctx, 6, 8, '#6b6e73', 2, 2);
-    px(ctx, 8, 12, '#ffd23f', 2, 1);
-  } else if (unitType === 'bandit') {
-    px(ctx, 5, 2, '#38302e', 6, 4);
-    px(ctx, 6, 4, '#f0c4a0', 4, 3);
-    px(ctx, 4, 7, '#6b2727', 8, 5);
-    px(ctx, 5, 12, '#2b2422', 2, 3);
-    px(ctx, 9, 12, '#2b2422', 2, 3);
-    px(ctx, 12, 5, '#cfd8e3', 2, 6);
   } else {
     // Standard Humanoid (villager, swordsman, archer, knight, spy)
     px(ctx, 6, 2, '#f0c4a0', 4, 4); // Kopf
@@ -441,6 +417,68 @@ export function getUnitSprite(unitType, color = '#e74c3c') {
 
   spriteCache.set(key, c);
   return c;
+}
+
+/**
+ * Verbundene Sprites für Mauern & Brücken (mask: 1=Nord, 2=Ost, 4=Süd, 8=West).
+ */
+export function getConnectedSprite(type, mask = 0) {
+  const key = `conn_${type}_${mask}`;
+  if (spriteCache.has(key)) return spriteCache.get(key);
+  const c = createCanvas(16);
+  const ctx = c.getContext('2d');
+  const N = mask & 1, E = mask & 2, S = mask & 4, W = mask & 8;
+
+  if (type === 'wall') {
+    // Mitte
+    px(ctx, 4, 4, '#87919e', 8, 8);
+    px(ctx, 5, 5, '#666e78', 6, 2);
+    px(ctx, 5, 9, '#555d66', 6, 2);
+    if (N) { px(ctx, 4, 0, '#87919e', 8, 5); px(ctx, 5, 1, '#666e78', 6, 2); }
+    if (S) { px(ctx, 4, 11, '#87919e', 8, 5); px(ctx, 5, 13, '#555d66', 6, 2); }
+    if (W) { px(ctx, 0, 4, '#87919e', 5, 8); px(ctx, 1, 6, '#666e78', 3, 2); }
+    if (E) { px(ctx, 11, 4, '#87919e', 5, 8); px(ctx, 12, 6, '#666e78', 3, 2); }
+    if (!mask) { px(ctx, 3, 3, '#9aa3b0', 3, 3); px(ctx, 10, 3, '#9aa3b0', 3, 3); }
+  } else if (type === 'bridge') {
+    px(ctx, 4, 4, '#8a592d', 8, 8);
+    if (N || S || (!E && !W)) {
+      px(ctx, 4, 0, '#8a592d', 8, 16);
+      px(ctx, 3, 0, '#543317', 1, 16);
+      px(ctx, 12, 0, '#543317', 1, 16);
+      for (let y = 1; y < 16; y += 3) px(ctx, 5, y, '#ab7340', 6, 2);
+    }
+    if (E || W) {
+      px(ctx, 0, 4, '#8a592d', 16, 8);
+      px(ctx, 0, 3, '#543317', 16, 1);
+      px(ctx, 0, 12, '#543317', 16, 1);
+      for (let x = 1; x < 16; x += 3) px(ctx, x, 5, '#ab7340', 2, 6);
+    }
+  }
+  spriteCache.set(key, c);
+  return c;
+}
+
+/** Zeichnet einen Flaggen-Hintergrund für Spieler-Wappen. */
+export function drawFlagBg(ctx, pattern, color, size) {
+  ctx.fillStyle = '#181410';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = color;
+  if (pattern === 'stripes') {
+    const h = Math.max(2, Math.floor(size / 4));
+    ctx.fillRect(0, 0, size, h);
+    ctx.fillRect(0, h * 2, size, h);
+  } else if (pattern === 'cross') {
+    const w = Math.max(2, Math.floor(size / 4));
+    ctx.fillRect(Math.floor((size - w) / 2), 0, w, size);
+    ctx.fillRect(0, Math.floor((size - w) / 2), size, w);
+  } else if (pattern === 'split') {
+    ctx.fillRect(0, 0, Math.floor(size / 2), size);
+  } else if (pattern === 'diagonal') {
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillRect(0, 0, size, size);
+  }
 }
 
 // ============================================================================
