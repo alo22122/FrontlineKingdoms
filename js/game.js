@@ -35,7 +35,8 @@ const BUILDINGS = {
   wall:       { name: 'Mauer',      cost: { wood: 10 },           desc: '+25 Garnison-Schutz in der Provinz.' },
   blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
   market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' },
-  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' }
+  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' },
+  caravan:    { name: 'Karawane',   cost: { wood: 40, gold: 25 }, desc: 'Landhandel! Gold steigt mit Entfernung zu Verbündeten.' }
 };
 
 const UNITS = {
@@ -65,13 +66,41 @@ const S = {
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
   authBusy: false, endShown: false, activeTab: 'build', drag: null,
   lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
-  quests: { built: 0, conquered: 0, bandits: 0, fort: 0, done: {} },
-  alertedArmies: new Set(), provCooldown: {}
+  quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
+  alertedArmies: new Set(), provCooldown: {}, fx: []
 };
 
 // ---------------------------------------------------------------------------
 // HILFSFUNKTIONEN
 // ---------------------------------------------------------------------------
+function flashEvent(msg, cls = '', dur = 4000) {
+  const el = $('event-flash'); if (!el) return;
+  el.textContent = msg;
+  el.className = `event-flash ${cls}`;
+  el.hidden = false;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.hidden = true; }, dur);
+}
+function addFx(kind, x, y, extra = {}) {
+  S.fx.push({ kind, x, y, start: now(), dur: extra.dur || 1400, ...extra });
+}
+const napKey = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+function hasNap(idA, idB) {
+  if (!idA || !idB || idA === idB) return false;
+  const naps = S.match?.naps || {};
+  return (naps[napKey(idA, idB)] || 0) > now();
+}
+async function makeNap(p) {
+  if (!S.match || !S.me) return;
+  const naps = { ...(S.match.naps || {}), [napKey(S.me.id, p.id)]: now() + 600000 };
+  const { error } = await sb.from('matches').update({ naps }).eq('id', S.match.id);
+  if (error) return toast(error.message, 'err');
+  S.match.naps = naps;
+  playSfx('coins');
+  flashEvent(`📜 10-Minuten-Nichtangriffspakt mit ${p.kingdom_name}!`, '', 3500);
+  await sysChat(`📜 ${S.me.kingdom_name} & ${p.kingdom_name} schließen einen 10-Minuten-Nichtangriffspakt (NAP)!`);
+  renderPanel();
+}
 function toast(msg, type = '') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
@@ -304,7 +333,10 @@ async function reloadMatch() {
   }
   applyMatchTerritory(false);
   if (prev.status !== data.status) routeByStatus(prev.status);
-  if (prev.season !== data.season) toast(data.season === 'winter' ? '❄️ Winter! Doppelter Nahrungsverbrauch.' : '☀️ Sommer kehrt zurück.');
+  if (prev.season !== data.season) {
+    flashEvent(data.season === 'winter' ? '❄️ DER WINTER BRICHT HEREIN! Flüsse frieren zu!' : '☀️ DER SOMMER KEHRT ZURÜCK!', data.season === 'winter' ? 'winter' : '', 4500);
+    playSfx('horn');
+  }
   if (prev.global_banner !== data.global_banner && data.global_banner) playSfx('horn');
   updateBanners();
   if (S.match.status === 'lobby') renderLobby();
@@ -350,6 +382,8 @@ function checkIncomingAttacks() {
     if (ti >= 0 && S.territory[ti] === S.me.slot && !S.alertedArmies.has(a.id)) {
       S.alertedArmies.add(a.id);
       playSfx('horn');
+      const att = playerById(a.player_id);
+      flashEvent(`🚨 ANGRIFF! ${att ? att.kingdom_name : 'Ein Feind'} greift dein Gebiet an!`, 'alarm', 4500);
       toast('🚨 ANGRIFF! Feindliche Truppen marschieren auf dein Gebiet!', 'err');
     }
   }
@@ -541,16 +575,6 @@ async function startMatch() {
     armyRows.push({ match_id: S.match.id, player_id: p.id, unit_type: 'swordsman', count: 10, x: cx, y: cy });
   }
 
-  const r = M.rng(S.match.map_seed + 555);
-  const far = (x, y) => spawns.every(([sx, sy]) => Math.hypot(sx - x, sy - y) > 12);
-  let bandits = 0, ruins = 0;
-  for (let tries = 0; tries < 6000 && (bandits < 24 || ruins < 12); tries++) {
-    const x = Math.floor(r() * M.W), y = Math.floor(r() * M.H);
-    if (!M.isPassable(t[M.idx(x, y)]) || !far(x, y)) continue;
-    if (bandits < 24) { armyRows.push({ match_id: S.match.id, player_id: null, unit_type: 'bandit', count: 6 + Math.floor(r() * 14), x, y }); bandits++; }
-    else { armyRows.push({ match_id: S.match.id, player_id: null, unit_type: 'ruin', count: 0, x, y }); ruins++; }
-  }
-
   await sb.from('buildings').delete().eq('match_id', S.match.id);
   await sb.from('armies').delete().eq('match_id', S.match.id);
   await sb.from('armies').insert(armyRows);
@@ -655,6 +679,16 @@ function estimateRates() {
     }
     d.gold += 1.2 + Math.min(4.5, maxDist * 0.03);
   }
+  // Karawanen-Handel über Land
+  const myCaravans = myBuildings().filter((b) => b.type === 'caravan');
+  const otherCaravans = S.buildings.filter((b) => b.type === 'caravan' && allied(b.player_id, me.id));
+  for (const c1 of myCaravans) {
+    let maxDist = 0;
+    for (const c2 of otherCaravans) {
+      if (c2.id !== c1.id) maxDist = Math.max(maxDist, Math.hypot(c2.x - c1.x, c2.y - c1.y));
+    }
+    d.gold += 1.0 + Math.min(4.0, maxDist * 0.025);
+  }
   for (const k in d) d[k] *= mult;
   return { d, mult };
 }
@@ -747,6 +781,7 @@ async function placeWorldBuilding(type, x, y) {
   toast(`✅ ${def.name} gebaut!`, 'ok');
   trackQuest('built', 1);
   if (type === 'fort') trackQuest('fort', 1);
+  if (type === 'harbor' || type === 'caravan') trackQuest('trade', 1);
   advanceTut('world_built');
   S.buildType = null;
   updateModeHint();
@@ -845,6 +880,26 @@ async function moveArmy(a, tx, ty) {
   if (!path.ok) return toast(path.reason, 'err');
   const owner = S.territory[M.idx(tx, ty)];
   const ownerP = owner >= 0 ? playerBySlot(owner) : null;
+  if (ownerP && hasNap(S.me.id, ownerP.id)) return toast('📜 Aktiver Nichtangriffspakt (NAP) mit diesem Spieler!', 'err');
+
+  // Katapult-Belagerung aus der Ferne (bis 3,5 Tiles Entfernung)
+  if (a.unit_type === 'catapult' && Math.hypot(tx - sx, ty - sy) <= 3.5 && pvpAllowed()) {
+    const targetBld = S.buildings.find((b) =>
+      ['wall', 'fort', 'tower'].includes(b.type) &&
+      b.player_id !== S.me.id && !allied(b.player_id, S.me.id) && !hasNap(S.me.id, b.player_id) &&
+      Math.max(Math.abs(b.x - tx), Math.abs(b.y - ty)) <= 1
+    );
+    if (targetBld) {
+      addFx('boulder', sx, sy, { tx: targetBld.x, ty: targetBld.y, dur: 650 });
+      setTimeout(() => { addFx('boom', targetBld.x, targetBld.y, { dur: 800 }); addFx('text', targetBld.x, targetBld.y, { label: '💥 Zerstört!', color: '#ff8a65' }); }, 600);
+      S.buildings = S.buildings.filter((x) => x.id !== targetBld.id);
+      await sb.from('buildings').delete().eq('id', targetBld.id);
+      playSfx('fire');
+      toast(`💣 Katapult hat ${BUILDINGS[targetBld.type]?.name || 'Gebäude'} aus der Ferne zerstört!`, 'ok');
+      S.selectedArmyId = null; updateModeHint(); renderPanel();
+      return;
+    }
+  }
   const enemyArmy = S.armies.find((e) => e.player_id && e.player_id !== a.player_id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && !allied(e.player_id, a.player_id));
   const attacksPlayer = (ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id)) || enemyArmy;
   if (attacksPlayer && !pvpAllowed()) return toast('🕊️ Freizeit-Frieden! Angriffe auf Spieler sind gerade gesperrt.', 'err');
@@ -947,7 +1002,6 @@ async function authorityTick() {
       await sb.from('map_snapshots').insert({ match_id: S.match.id, tick: Math.floor(t / 1000), owners_data: M.encodeTerritory(S.territory) });
     }
     if (t - S.lastEvent > 180000 / sp) { S.lastEvent = t; await randomEvent(); }
-    if (t - S.lastBanditCheck > 30000) { S.lastBanditCheck = t; await maintainBandits(); }
   } catch (e) { console.warn('authorityTick', e); }
   finally { S.authBusy = false; }
 }
@@ -984,7 +1038,8 @@ async function resolveArrival(a) {
   let count = a.count;
   const foes = S.armies.filter((e) => e.id !== a.id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && e.player_id !== a.player_id && !allied(e.player_id, a.player_id));
   for (const e of foes) {
-    if ((a.player_id && e.player_id && !pvp) || (!a.player_id && !e.player_id)) continue;
+    if ((a.player_id && e.player_id && (!pvp || hasNap(a.player_id, e.player_id))) || (!a.player_id && !e.player_id)) continue;
+    addFx('boom', tx, ty, { dur: 900 });
     const res = fight({ ...a, count, x: tx, y: ty }, e);
     const defender = playerById(e.player_id);
     if (res.attackerWins) {
@@ -1010,7 +1065,7 @@ async function resolveArrival(a) {
     if (tileOwnerSlot !== attacker.slot) {
       const tile = S.terrain[M.idx(tx, ty)];
       const ownerP = tileOwnerSlot >= 0 ? playerBySlot(tileOwnerSlot) : null;
-      if (ownerP && allied(ownerP.id, attacker.id)) {
+      if ((ownerP && allied(ownerP.id, attacker.id)) || (ownerP && hasNap(attacker.id, ownerP.id))) {
         await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
         return;
       }
@@ -1068,6 +1123,7 @@ async function conquer(tx, ty, p, pvp) {
     }
     if (gained > 0) {
       toast(`🏳️ Provinz „${prov.name}“ erobert!`, 'ok');
+      addFx('text', prov.cx, prov.cy, { label: `🏳️ ${prov.name}`, color: '#ffd23f', dur: 1800 });
       if (p.id === S.me?.id) trackQuest('conquered', 1);
       if (prov.goldBonus > 0) rpcAdd(p.id, { gold: 25 }, true);
       // Belagerung: Gebäude in der eroberten Provinz übernehmen
@@ -1304,7 +1360,12 @@ function render() {
     const px = pos.x * TILE, py = pos.y * TILE + (pos.moving ? Math.sin(tNow / 120) * 0.8 : 0);
     if (friendly && pos.moving) {
       ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 0.6; ctx.setLineDash([2, 2]);
-      ctx.beginPath(); ctx.moveTo(px + 8, py + 8); ctx.lineTo(a.target_x * TILE + 8, a.target_y * TILE + 8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px + 6, py + 6); ctx.lineTo(a.target_x * TILE + 6, a.target_y * TILE + 6); ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (!friendly && pos.moving && M.inBounds(a.target_x, a.target_y) && S.territory[M.idx(a.target_x, a.target_y)] === S.me.slot) {
+      // Pulsierende rote Angriffs-Linie bei feindlichem Angriff!
+      ctx.strokeStyle = `rgba(255, 70, 70, ${0.5 + 0.4 * Math.sin(tNow / 150)})`; ctx.lineWidth = 1.2; ctx.setLineDash([3, 2]);
+      ctx.beginPath(); ctx.moveTo(px + 6, py + 6); ctx.lineTo(a.target_x * TILE + 6, a.target_y * TILE + 6); ctx.stroke();
       ctx.setLineDash([]);
     }
     if (a.id === S.selectedArmyId) { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(px - 1, py - 1, TILE + 2, TILE + 2); }
@@ -1318,6 +1379,35 @@ function render() {
   if (!S.fogOff) {
     if (S.fogBuilt !== S.fogVersion) rebuildFogCanvas();
     ctx.drawImage(S.fogCanvas, 0, 0, M.W * TILE, M.H * TILE);
+  }
+
+  // Partikel- & Belagerungs-Effekte (S.fx)
+  S.fx = S.fx.filter((f) => tNow - f.start < f.dur);
+  for (const f of S.fx) {
+    const p = (tNow - f.start) / f.dur;
+    if (f.kind === 'boulder') {
+      const bx = (f.x + (f.tx - f.x) * p) * TILE + 6;
+      const by = (f.y + (f.ty - f.y) * p) * TILE + 6 - Math.sin(p * Math.PI) * 16;
+      ctx.fillStyle = '#5a5f66'; ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI * 2); ctx.fill();
+    } else if (f.kind === 'boom') {
+      ctx.strokeStyle = `rgba(255, 120, 40, ${1 - p})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x * TILE + 6, f.y * TILE + 6, 4 + p * 14, 0, Math.PI * 2); ctx.stroke();
+    } else if (f.kind === 'text') {
+      ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = f.color || '#fff'; ctx.globalAlpha = 1 - p;
+      ctx.fillText(f.label, f.x * TILE + 6, f.y * TILE - p * 14);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Winter-Schneefall im Viewport
+  if (season === 'winter') {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(235, 248, 255, 0.55)';
+    for (let k = 0; k < 70; k++) {
+      ctx.fillRect((k * 137 + tNow / 25) % c.width, (k * 89 + tNow / 14) % c.height, 2, 2);
+    }
+    ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
   }
 
   // Bau-Vorschau auf der Weltkarte
@@ -1493,7 +1583,7 @@ function btn(label, onClick, cls = 'btn small', disabled = false, title = '') {
 const QUESTS = [
   { id: 'built', label: 'Baue 2 Gebäude', goal: 2, reward: 40 },
   { id: 'conquered', label: 'Erobere 2 Provinzen', goal: 2, reward: 60 },
-  { id: 'bandits', label: 'Besiege 1 Banditenlager', goal: 1, reward: 50 },
+  { id: 'trade', label: 'Baue Hafen oder Karawane', goal: 1, reward: 50 },
   { id: 'fort', label: 'Baue eine Festung', goal: 1, reward: 80 }
 ];
 function trackQuest(id, inc) {
@@ -1649,6 +1739,8 @@ function panelDiplo(el) {
     box.appendChild(head);
     if (!isMe && !p.is_eliminated) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginTop = '6px';
+      const napLeft = Math.max(0, Math.ceil(((S.match?.naps?.[napKey(me.id, p.id)] || 0) - now()) / 60000));
+      actions.appendChild(btn(napLeft > 0 ? `📜 NAP (${napLeft}m)` : '📜 10m NAP', () => makeNap(p), 'btn small', napLeft > 0));
       const sel = document.createElement('select'); sel.style.width = '80px'; sel.style.display = 'inline-block';
       sel.innerHTML = ['wood', 'gold', 'raw_food'].map((r) => `<option value="${r}">${RES_ICON[r]}</option>`).join('');
       const amt = document.createElement('input'); amt.type = 'number'; amt.value = '50'; amt.min = '1'; amt.style.width = '70px'; amt.style.display = 'inline-block';
