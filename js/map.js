@@ -448,14 +448,20 @@ export function lineTiles(x0, y0, x1, y1) {
   return pts;
 }
 
-export function checkPath(t, bridges, x0, y0, x1, y1, unitType) {
+export function checkPath(t, bridges, x0, y0, x1, y1, unitType, season = 'summer') {
   const pts = lineTiles(x0, y0, x1, y1);
+  let waterStreak = 0;
   for (let k = 1; k < pts.length; k++) {
     const [x, y] = pts[k];
     const tile = t[idx(x, y)];
     if (tile === T.MOUNTAIN && unitType !== 'ship') return { ok: false, reason: 'Berge blockieren den Weg.' };
     if (tile === T.WATER && unitType !== 'ship' && !bridges.has(idx(x, y))) {
-      return { ok: false, reason: 'Wasser im Weg – baue eine Brücke oder nutze Schiffe.' };
+      waterStreak++;
+      if (season !== 'winter' || waterStreak > 3) {
+        return { ok: false, reason: season === 'winter' ? 'Zu breites Wasser (max. 3 Eis-Felder im Winter).' : 'Wasser im Weg – baue eine Brücke oder nutze Schiffe.' };
+      }
+    } else {
+      waterStreak = 0;
     }
   }
   return { ok: true };
