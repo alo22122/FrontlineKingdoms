@@ -11,7 +11,7 @@ import * as M from './map.js';
 import { setupAdmin, openAdminPanel, openMapEditor, refreshAdminPanel } from './admin.js';
 
 const $ = (id) => document.getElementById(id);
-const TILE = 12;
+const TILE = 8;
 const PLAYER_COLORS = ['#e63946', '#457b9d', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb8500', '#8ac926', '#adb5bd'];
 const EMBLEMS = { crown: 'Krone', lion: 'Löwe', dragon: 'Drache', sword: 'Schwert' };
 const AGE_NAMES = ['', 'Dunkles Zeitalter', 'Feudalzeit', 'Ritterzeit', 'Kaiserzeit'];
@@ -99,6 +99,29 @@ async function makeNap(p) {
   playSfx('coins');
   flashEvent(`📜 10-Minuten-Nichtangriffspakt mit ${p.kingdom_name}!`, '', 3500);
   await sysChat(`📜 ${S.me.kingdom_name} & ${p.kingdom_name} schließen einen 10-Minuten-Nichtangriffspakt (NAP)!`);
+  renderPanel();
+}
+function warState(idA, idB) {
+  if (!idA || !idB || idA === idB) return 'none';
+  const t = (S.match?.wars || {})[napKey(idA, idB)];
+  if (!t) return 'none';
+  return now() >= t ? 'active' : 'countdown';
+}
+function warLeftSec(idA, idB) {
+  const t = (S.match?.wars || {})[napKey(idA, idB)] || 0;
+  return Math.max(0, Math.ceil((t - now()) / 1000));
+}
+async function declareWar(p) {
+  if (!S.match || !S.me) return;
+  if (hasNap(S.me.id, p.id)) return toast('📜 Ihr habt noch einen aktiven NAP!', 'err');
+  if (allied(S.me.id, p.id)) return toast('Ihr seid verbündet!', 'err');
+  const wars = { ...(S.match.wars || {}), [napKey(S.me.id, p.id)]: now() + 30000 };
+  const { error } = await sb.from('matches').update({ wars }).eq('id', S.match.id);
+  if (error) return toast(error.message, 'err');
+  S.match.wars = wars;
+  playSfx('horn');
+  flashEvent(`📣 KRIEGSERKLÄRUNG! Krieg gegen ${p.kingdom_name} beginnt in 30s!`, 'alarm', 4500);
+  await sysChat(`📣 ${S.me.kingdom_name} erklärt ${p.kingdom_name} den Krieg! Kampfbeginn in 30 Sekunden!`);
   renderPanel();
 }
 function toast(msg, type = '') {
@@ -220,9 +243,9 @@ function showMenu() {
 }
 
 async function refreshMenu() {
-  const { data: lb } = await sb.from('profiles').select('username,wins').order('wins', { ascending: false }).limit(10);
+  const { data: lb } = await sb.from('profiles').select('username,wins,medal').order('wins', { ascending: false }).limit(10);
   $('leaderboard').innerHTML = (lb || []).length
-    ? lb.map((p) => `<li><span>${esc(p.username)}</span><b>${p.wins} 🏆</b></li>`).join('')
+    ? lb.map((p) => `<li><span>${esc(p.username)}${p.medal ? ` <small class="muted">(${esc(p.medal)})</small>` : ''}</span><b>${p.wins} 🏆</b></li>`).join('')
     : '<li class="muted">Noch keine Einträge</li>';
 
   const since = new Date(now() - 2 * 24 * 3600 * 1000).toISOString();
@@ -346,7 +369,7 @@ async function reloadMatch() {
 async function reloadPlayers() {
   if (!S.match) return;
   const { data } = await sb.from('match_players')
-    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,age,alliance,vassal_of,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
+    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,age,alliance,vassal_of,capital_level,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
     .eq('match_id', S.match.id).order('slot');
   if (!data) return;
   S.players = data;
@@ -598,6 +621,7 @@ function showGame() {
   S.timers.push(setInterval(clientTick, 2000));
   S.timers.push(setInterval(authorityTick, 1000));
   S.timers.push(setInterval(computeVisibility, 500));
+  S.timers.push(setInterval(renderMinimap, 500));
   S.timers.push(setInterval(updateHud, 500));
   S.timers.push(setInterval(updatePvpBanner, 10000));
   S.timers.push(setInterval(() => {
@@ -611,9 +635,18 @@ function showGame() {
 
 function centerOnCapital() {
   const c = $('game-canvas'), z = S.camW.z;
-  const cx = S.me?.capital_x ?? 100, cy = S.me?.capital_y ?? 100;
+  const cx = S.me?.capital_x ?? 240, cy = S.me?.capital_y ?? 240;
   S.camW.x = cx * TILE + TILE / 2 - c.width / 2 / z;
   S.camW.y = cy * TILE + TILE / 2 - c.height / 2 / z;
+}
+function renderMinimap() {
+  const mm = $('minimap');
+  if (!mm || !S.terrain || !S.inGame) return;
+  drawMiniMap(mm, S.terrain, S.territory);
+  const ctx = mm.getContext('2d'), c = $('game-canvas');
+  const sx = mm.width / (M.W * TILE), sy = mm.height / (M.H * TILE);
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(S.camW.x * sx, S.camW.y * sy, (c.width / S.camW.z) * sx, (c.height / S.camW.z) * sy);
 }
 function resizeCanvas() {
   const wrap = $('canvas-wrap'), c = $('game-canvas');
@@ -660,9 +693,10 @@ const popCap = () => 5 + 5 * countType('house');
 function estimateRates() {
   const me = S.me;
   if (!me) return { d: { wood: 0.6, gold: 0.3, raw_food: 0.8 }, mult: 1 };
-  // Basis-Produktion der Hauptstadt + gebaute Gebäude auf der Weltkarte
+  // Basis-Produktion der Hauptstadt (steigt mit Hauptstadt-Stufe) + Gebäude
+  const capLv = me.capital_level || 1;
   const mult = (0.8 + me.population * 0.04) * (S.match?.season === 'winter' ? 0.8 : 1);
-  const d = { wood: 0.8, gold: 0.4, raw_food: 1.0 };
+  const d = { wood: 0.8 * capLv, gold: 0.4 * capLv, raw_food: 1.0 * capLv };
   for (const b of myBuildings()) {
     const def = BUILDINGS[b.type];
     if (!def?.prod) continue;
@@ -881,6 +915,16 @@ async function moveArmy(a, tx, ty) {
   const owner = S.territory[M.idx(tx, ty)];
   const ownerP = owner >= 0 ? playerBySlot(owner) : null;
   if (ownerP && hasNap(S.me.id, ownerP.id)) return toast('📜 Aktiver Nichtangriffspakt (NAP) mit diesem Spieler!', 'err');
+  if (ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id) && pvpAllowed()) {
+    const ws = warState(S.me.id, ownerP.id);
+    if (ws === 'none') {
+      await declareWar(ownerP);
+      return toast('📣 Krieg erklärt! Angriff in 30 Sekunden möglich!', 'ok');
+    }
+    if (ws === 'countdown') {
+      return toast(`⏳ Kriegserklärung läuft noch ${warLeftSec(S.me.id, ownerP.id)}s!`, 'err');
+    }
+  }
 
   // Katapult-Belagerung aus der Ferne (bis 3,5 Tiles Entfernung)
   if (a.unit_type === 'catapult' && Math.hypot(tx - sx, ty - sy) <= 3.5 && pvpAllowed()) {
@@ -1079,7 +1123,7 @@ async function resolveArrival(a) {
         return;
       }
       const garrison = ownerP
-        ? 160 + countType('fort', ownerP) * 90 + countType('tower', ownerP) * 45 + countType('wall', ownerP) * 40
+        ? 160 + ((ownerP.capital_level || 1) - 1) * 90 + countType('fort', ownerP) * 90 + countType('tower', ownerP) * 45 + countType('wall', ownerP) * 40
         : (tile === M.T.GOLD ? 180 : tile === M.T.HILL || tile === M.T.FOREST ? 140 : 100);
       const ap = armyPower({ ...a, count }, tx, ty);
       if (ap < garrison) {
@@ -1171,8 +1215,10 @@ async function endMatch(p, terrStr) {
   await sb.from('map_snapshots').insert({ match_id: S.match.id, tick: Math.floor(now() / 1000), owners_data: terrStr });
   await sb.from('matches').update({ status: 'finished', winner_id: p.user_id }).eq('id', S.match.id);
   const { data: prof } = await sb.from('profiles').select('wins').eq('id', p.user_id).maybeSingle();
-  if (prof) await sb.from('profiles').update({ wins: (prof.wins || 0) + 1 }).eq('id', p.user_id);
-  await sysChat(`👑 ${p.kingdom_name} hat 70% der Welt erobert und gewonnen!`);
+  const mt = S.match.map_type;
+  const medal = mt === 'europe' ? 'Eroberer Europas' : mt === 'world' ? 'Weltenherrscher' : mt === 'archipelago' ? 'Meister der See' : mt === 'rome' ? 'Imperator' : mt === 'ottoman' ? 'Sultan' : countType('harbor', p) + countType('caravan', p) >= 2 ? 'Handelsfürst' : 'Reichskanzler';
+  if (prof) await sb.from('profiles').update({ wins: (prof.wins || 0) + 1, medal }).eq('id', p.user_id);
+  await sysChat(`👑 ${p.kingdom_name} hat 70% der Welt erobert und den Titel „${medal}“ gewonnen!`);
   await reloadMatch();
 }
 
@@ -1598,6 +1644,18 @@ function trackQuest(id, inc) {
   }
 }
 
+async function upgradeCapital() {
+  const me = S.me, lv = me.capital_level || 1;
+  if (lv >= 3) return;
+  const cost = lv === 1 ? { wood: 120, gold: 80 } : { wood: 250, gold: 180 };
+  if (!(await spend(cost))) return;
+  me.capital_level = lv + 1;
+  await sb.from('match_players').update({ capital_level: me.capital_level }).eq('id', me.id);
+  playSfx('horn');
+  toast(`🏰 Hauptstadt auf Stufe ${me.capital_level} ausgebaut!`, 'ok');
+  renderPanel();
+}
+
 function panelBuild(el) {
   const me = S.me;
   const { d } = estimateRates();
@@ -1613,6 +1671,15 @@ function panelBuild(el) {
     <div class="stat"><span>💰 Gold</span><b>+${d.gold.toFixed(1)}</b></div>
     <div class="stat"><span>🌾 Nahrung</span><b>+${d.raw_food.toFixed(1)}</b></div>
     <div class="stat"><span>👥 Einwohner</span><b>${me.population}/${popCap()}</b></div></div>`));
+
+  const capLv = me.capital_level || 1;
+  const capBox = h(`<div class="info-box"><h3>🏰 Hauptstadt (Stufe ${capLv}/3)</h3></div>`);
+  if (capLv < 3) {
+    const cCost = capLv === 1 ? { wood: 120, gold: 80 } : { wood: 250, gold: 180 };
+    capBox.firstChild.appendChild(h(`<p class="muted">Mehr Basis-Produktion & Verteidigung (${costText(cCost)})</p>`));
+    capBox.firstChild.appendChild(btn(`⬆️ Hauptstadt Stufe ${capLv + 1}`, upgradeCapital, 'btn small primary'));
+  } else capBox.firstChild.appendChild(h('<p class="muted">Maximale Stufe erreicht!</p>'));
+  el.appendChild(capBox);
 
   const ageBox = h(`<div class="info-box"><h3>🏛️ ${AGE_NAMES[me.age]}</h3></div>`);
   if (me.age < 4) {
@@ -1741,6 +1808,15 @@ function panelDiplo(el) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginTop = '6px';
       const napLeft = Math.max(0, Math.ceil(((S.match?.naps?.[napKey(me.id, p.id)] || 0) - now()) / 60000));
       actions.appendChild(btn(napLeft > 0 ? `📜 NAP (${napLeft}m)` : '📜 10m NAP', () => makeNap(p), 'btn small', napLeft > 0));
+      const ws = warState(me.id, p.id);
+      if (!ally && napLeft === 0) {
+        actions.appendChild(btn(
+          ws === 'active' ? '⚔️ Im Krieg' : ws === 'countdown' ? `⏳ ${warLeftSec(me.id, p.id)}s` : '📣 Krieg (30s)',
+          () => declareWar(p),
+          'btn small danger',
+          ws !== 'none'
+        ));
+      }
       const sel = document.createElement('select'); sel.style.width = '80px'; sel.style.display = 'inline-block';
       sel.innerHTML = ['wood', 'gold', 'raw_food'].map((r) => `<option value="${r}">${RES_ICON[r]}</option>`).join('');
       const amt = document.createElement('input'); amt.type = 'number'; amt.value = '50'; amt.min = '1'; amt.style.width = '70px'; amt.style.display = 'inline-block';
@@ -1873,6 +1949,20 @@ function bindStatic() {
   document.querySelectorAll('.tab').forEach((b) => { b.onclick = () => { playSfx('click'); setActiveTab(b.dataset.tab); }; });
   document.querySelectorAll('[data-close]').forEach((b) => { b.onclick = () => { $(b.dataset.close).hidden = true; }; });
   window.addEventListener('resize', () => S.inGame && resizeCanvas());
+  const mm = $('minimap');
+  if (mm) {
+    const jump = (e) => {
+      const r = mm.getBoundingClientRect(), c = $('game-canvas');
+      const wx = clamp((e.clientX - r.left) / r.width, 0, 1) * M.W * TILE;
+      const wy = clamp((e.clientY - r.top) / r.height, 0, 1) * M.H * TILE;
+      S.camW.x = wx - c.width / 2 / S.camW.z;
+      S.camW.y = wy - c.height / 2 / S.camW.z;
+    };
+    mm.addEventListener('pointerdown', (e) => { mm._drag = true; mm.setPointerCapture(e.pointerId); jump(e); });
+    mm.addEventListener('pointermove', (e) => { if (mm._drag) jump(e); });
+    mm.addEventListener('pointerup', () => { mm._drag = false; });
+    mm.addEventListener('pointercancel', () => { mm._drag = false; });
+  }
   bindCanvas(); bindKeys();
 }
 
