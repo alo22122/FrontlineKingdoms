@@ -2,7 +2,9 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Frontline Kingdoms – Realms of Iron & Crown</title>
   <meta name="description" content="Mittelalterliches Browser-Multiplayer-Strategiespiel: Baue dein Dorf, erobere die Weltkarte, schmiede Allianzen." />
   <link rel="stylesheet" href="style.css" />
@@ -35,6 +37,7 @@
       <h1 class="logo small">⚔️ Frontline Kingdoms</h1>
       <div class="row">
         <span id="menu-user" class="pill"></span>
+        <button id="btn-tutorial-menu" class="btn">📖 Tutorial</button>
         <button id="btn-editor-menu" class="btn" hidden>🗺️ Map-Editor</button>
         <button id="btn-logout" class="btn ghost">Abmelden</button>
       </div>
@@ -53,11 +56,17 @@
         <label>Name des Spiels<input id="create-name" maxlength="30" placeholder="z.B. Klasse 8b Krieg" /></label>
         <label>Kartentyp
           <select id="create-map">
-            <option value="continents">Kontinente</option>
-            <option value="archipelago">Inseln</option>
-            <option value="valley">Tal</option>
-            <option value="desert">Wüste</option>
-            <option value="custom">Eigene Karte</option>
+            <option value="continents">Kontinente (200×200)</option>
+            <option value="world">🌍 Weltkarte</option>
+            <option value="europe">🇪🇺 Europa</option>
+            <option value="germany">🇩🇪 Deutschland</option>
+            <option value="turkey">🇹🇷 Türkei</option>
+            <option value="rome">🏛️ Römisches Reich</option>
+            <option value="ottoman">🌙 Osmanisches Reich</option>
+            <option value="archipelago">🏝️ Inseln</option>
+            <option value="valley">⛰️ Tal</option>
+            <option value="desert">🏜️ Wüste</option>
+            <option value="custom">🗺️ Eigene Karte</option>
           </select>
         </label>
         <label id="create-custom-wrap" hidden>Eigene Karte<select id="create-custom"></select></label>
@@ -83,11 +92,17 @@
           <h3>Spiel-Einstellungen</h3>
           <label>Kartentyp
             <select id="lobby-map">
-              <option value="continents">Kontinente</option>
-              <option value="archipelago">Inseln</option>
-              <option value="valley">Tal</option>
-              <option value="desert">Wüste</option>
-              <option value="custom">Eigene Karte</option>
+              <option value="continents">Kontinente (200×200)</option>
+              <option value="world">🌍 Weltkarte</option>
+              <option value="europe">🇪🇺 Europa</option>
+              <option value="germany">🇩🇪 Deutschland</option>
+              <option value="turkey">🇹🇷 Türkei</option>
+              <option value="rome">🏛️ Römisches Reich</option>
+              <option value="ottoman">🌙 Osmanisches Reich</option>
+              <option value="archipelago">🏝️ Inseln</option>
+              <option value="valley">⛰️ Tal</option>
+              <option value="desert">🏜️ Wüste</option>
+              <option value="custom">🗺️ Eigene Karte</option>
             </select>
           </label>
           <label id="lobby-custom-wrap" hidden>Eigene Karte<select id="lobby-custom"></select></label>
@@ -141,6 +156,7 @@
       <div id="pvp-banner" class="banner pvp">…</div>
       <div class="row hud-buttons">
         <button id="btn-view" class="btn">🏘️ Dorf</button>
+        <button id="btn-tutorial" class="btn" title="Tutorial">📖</button>
         <button id="btn-admin" class="btn gold" hidden>👑 Admin</button>
         <button id="btn-mute" class="btn ghost">🔊</button>
         <button id="btn-leave-game" class="btn ghost">🚪</button>
@@ -155,6 +171,7 @@
           <button id="btn-center" class="btn small" title="Zur Hauptstadt">🏰</button>
         </div>
         <div id="mode-hint" class="mode-hint" hidden></div>
+        <button id="btn-cancel-mode" class="btn small danger" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);z-index:5;" hidden>✖ Abbrechen</button>
         <div id="paused-overlay" class="paused" hidden>⏸️ Spiel pausiert</div>
       </div>
       <aside class="sidebar">
@@ -192,6 +209,34 @@
         <canvas id="editor-canvas" width="600" height="600"></canvas>
         <div class="editor-tools" id="editor-tools"></div>
       </div>
+    </div>
+  </div>
+
+  <div id="modal-tutorial" class="modal" hidden>
+    <div class="modal-box wide">
+      <div class="modal-head"><h2>📖 Tutorial – So spielst du Frontline Kingdoms</h2><button class="btn ghost" data-close="modal-tutorial">✖</button></div>
+      <div class="tut-step">
+        <h3>1️⃣ Dein Dorf aufbauen (🏘️ Dorf-Ansicht)</h3>
+        <p>Wechsle oben über <b>🏘️ Dorf</b> in dein 40×40-Dorf. Baue im Tab <b>🔨</b> zuerst <b>Bauernhöfe</b> (Nahrung), <b>Holzfäller</b>, <b>Steinbruch</b> und <b>Häuser</b> (mehr Einwohner). Dorfbewohner arbeiten automatisch!</p>
+      </div>
+      <div class="tut-step">
+        <h3>2️⃣ Nahrung, Kornspeicher &amp; Bäckerei</h3>
+        <p>Ohne <b>Kornspeicher</b> verdirbt ein Teil deiner Rohnahrung. Eine <b>Bäckerei</b> backt daraus haltbares Brot, das die <b>Moral</b> hebt. Sinkt Nahrung auf 0, arbeiten alle langsamer!</p>
+      </div>
+      <div class="tut-step">
+        <h3>3️⃣ Zeitalter &amp; Armeen (⚔️)</h3>
+        <p>Baue eine <b>Schmiede</b>, um in neue Zeitalter aufzusteigen, und eine <b>Kaserne</b>, um Truppen auszubilden (Schwertkämpfer, Bogenschützen, Ritter, Katapulte, Schiffe).</p>
+      </div>
+      <div class="tut-step">
+        <h3>4️⃣ Weltkarte &amp; Provinzen (Crusader-Kings-Prinzip)</h3>
+        <p>Die Weltkarte (200×200) ist in <b>Provinzen (Grafschaften)</b> unterteilt. Land wächst <b>nicht</b> von selbst! Tippe eine Armee an und tippe auf eine Provinz, um sie zu erobern. <b>Hügel</b> geben Bogenschützen +50% Bonus; für <b>Wasser</b> brauchst du Brücken oder Schiffe. Wer <b>70% der Welt</b> hält, gewinnt!</p>
+      </div>
+      <div class="tut-step">
+        <h3>5️⃣ iPad-Steuerung &amp; Schulzeit-PvP</h3>
+        <p><b>iPad / Touch:</b> Mit 1 Finger ziehen = Karte bewegen, mit 2 Fingern = Zoomen, Tippen = Auswählen/Marschieren.<br>
+        <b>Schulzeit-PvP:</b> Mo/Mi/Do 08:00–15:30 &amp; Di/Fr 08:00–13:30 ist Kriegszeit. Danach herrscht Freizeit-Frieden (Bauen, Handeln &amp; Banditen angreifen geht immer!).</p>
+      </div>
+      <button class="btn primary" data-close="modal-tutorial">Verstanden – Los geht's!</button>
     </div>
   </div>
 
