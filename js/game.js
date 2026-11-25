@@ -62,16 +62,17 @@ const BATCH = 5;
 const S = {
   user: null, match: null, players: [], me: null, buildings: [], armies: [], chat: [],
   terrain: null, terrainKey: '', landTotal: 1, terrainCanvases: {}, villageGround: {},
+  provinces: [], provOf: null, provBorderCanvas: null,
   territory: new Int8Array(M.N).fill(-1), territoryLoaded: false, territoryDirty: false, territoryVersion: 0, terrBuilt: -1,
   visible: new Uint8Array(M.N), explored: new Uint8Array(M.N), exploredDirty: false, fogVersion: 0, fogBuilt: -1,
   bridges: new Set(), terrCanvas: null, fogCanvas: null,
-  view: 'world', camW: { x: 0, y: 0, z: 2 }, camV: { x: 0, y: 0, z: 1 },
+  view: 'world', camW: { x: 0, y: 0, z: 1.5 }, camV: { x: 0, y: 0, z: 1 },
   selectedArmyId: null, selectedBuildingId: null, selectedTile: null, buildType: null, bridgeMode: false, hoverTile: null,
   online: [], spied: {}, fogOff: false, unsub: null, timers: [], menuTimer: null, inGame: false,
   acc: { wood: 0, stone: 0, gold: 0, raw_food: 0, bread: 0 }, popAcc: 0,
-  lastTerritoryWrite: 0, lastSnapshot: 0, lastExpand: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
+  lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
   authBusy: false, fireSeen: {}, endShown: false, activeTab: 'info', placing: new Set(), drag: null,
-  lobbyFormFilled: false, myEmblem: 'crown', chatUnread: false, tickCount: 0
+  lobbyFormFilled: false, myEmblem: 'crown', chatUnread: false, tickCount: 0, rafRunning: false
 };
 
 // ---------------------------------------------------------------------------
@@ -422,6 +423,10 @@ async function ensureTerrain() {
   S.terrainKey = key;
   S.landTotal = Math.max(1, M.countLand(S.terrain));
   S.terrainCanvases = {};
+  const pd = M.generateProvinces(S.terrain, m.map_seed, m.map_type);
+  S.provinces = pd.provinces;
+  S.provOf = pd.provOf;
+  S.provBorderCanvas = null;
 }
 
 /** Übernimmt Gebiet aus der DB (die Authority behält ihre eigene, neuere Version). */
@@ -618,11 +623,15 @@ async function startMatch() {
   for (let k = 0; k < S.players.length; k++) {
     const p = S.players[k];
     const [cx, cy] = spawns[k];
-    for (let dy = -3; dy <= 3; dy++) {
-      for (let dx = -3; dx <= 3; dx++) {
-        const x = cx + dx;
-        const y = cy + dy;
-        if (M.inBounds(x, y) && dx * dx + dy * dy <= 10 && M.isLand(t[M.idx(x, y)])) territory[M.idx(x, y)] = p.slot;
+    const startProvId = S.provOf ? S.provOf[M.idx(cx, cy)] : -1;
+    if (startProvId >= 0 && S.provinces[startProvId]) {
+      for (const ti of S.provinces[startProvId].tiles) territory[ti] = p.slot;
+    } else {
+      for (let dy = -6; dy <= 6; dy++) {
+        for (let dx = -6; dx <= 6; dx++) {
+          const x = cx + dx, y = cy + dy;
+          if (M.inBounds(x, y) && dx * dx + dy * dy <= 36 && M.isLand(t[M.idx(x, y)])) territory[M.idx(x, y)] = p.slot;
+        }
       }
     }
     await sb.from('match_players').update({
@@ -638,16 +647,16 @@ async function startMatch() {
     armyRows.push({ match_id: S.match.id, player_id: p.id, unit_type: 'swordsman', count: 10, x: cx, y: cy });
   }
 
-  // Banditenlager & Ruinen
+  // Banditenlager & Ruinen auf 200x200
   const r = M.rng(S.match.map_seed + 555);
-  const farFromSpawns = (x, y) => spawns.every(([sx, sy]) => Math.hypot(sx - x, sy - y) > 9);
+  const farFromSpawns = (x, y) => spawns.every(([sx, sy]) => Math.hypot(sx - x, sy - y) > 12);
   let bandits = 0;
   let ruins = 0;
-  for (let tries = 0; tries < 3000 && (bandits < 12 || ruins < 6); tries++) {
+  for (let tries = 0; tries < 6000 && (bandits < 24 || ruins < 12); tries++) {
     const x = Math.floor(r() * M.W);
     const y = Math.floor(r() * M.H);
     if (!M.isPassable(t[M.idx(x, y)]) || !farFromSpawns(x, y)) continue;
-    if (bandits < 12) {
+    if (bandits < 24) {
       armyRows.push({ match_id: S.match.id, player_id: null, unit_type: 'bandit', count: 6 + Math.floor(r() * 14), x, y });
       bandits++;
     } else {
@@ -736,12 +745,14 @@ function setView(v) {
 
 function updateModeHint() {
   const el = $('mode-hint');
+  const cancelBtn = $('btn-cancel-mode');
   let txt = '';
-  if (S.view === 'village' && S.buildType) txt = `🔨 ${BUILDINGS[S.buildType].name} platzieren – Rechtsklick/Esc zum Abbrechen`;
-  else if (S.view === 'world' && S.bridgeMode) txt = '🌉 Wasser-Tile neben deinem Gebiet anklicken – Esc zum Abbrechen';
-  else if (S.view === 'world' && S.selectedArmyId) txt = '⚔️ Ziel-Tile anklicken, um die Armee zu schicken';
+  if (S.view === 'village' && S.buildType) txt = `🔨 ${BUILDINGS[S.buildType].name} platzieren – Tippen zum Bauen`;
+  else if (S.view === 'world' && S.bridgeMode) txt = '🌉 Wasser-Tile neben deinem Gebiet antippen';
+  else if (S.view === 'world' && S.selectedArmyId) txt = '⚔️ Ziel-Provinz / Tile antippen, um die Armee zu schicken';
   el.textContent = txt;
   el.hidden = !txt;
+  if (cancelBtn) cancelBtn.hidden = !txt;
 }
 
 function updateBanners() {
@@ -1092,7 +1103,7 @@ async function buildBridge(x, y) {
 
 function travelMs(unitType, x0, y0, x1, y1) {
   const spt = UNITS[unitType]?.speed || 2;
-  return (Math.hypot(x1 - x0, y1 - y0) * spt * 1000) / speed();
+  return (Math.hypot(x1 - x0, y1 - y0) * spt * 1800) / speed();
 }
 
 function armyPos(a) {
@@ -1254,10 +1265,6 @@ async function authorityTick() {
     for (const a of arrived) {
       if (S.armies.includes(a)) await resolveArrival(a);
     }
-    if (t - S.lastExpand > 4000 / sp) {
-      S.lastExpand = t;
-      passiveExpand();
-    }
     if (S.territoryDirty && t - S.lastTerritoryWrite > 2000) await writeTerritory();
     if (t - S.lastSnapshot > 60000) {
       S.lastSnapshot = t;
@@ -1376,23 +1383,32 @@ async function grantLoot(p, e) {
   await sysChat(`💰 ${p.kingdom_name} plündert ${ruin ? 'eine Ruine' : 'ein Banditenlager'} (+${gold} Gold)!`);
 }
 
-function conquer(tx, ty, R, p, pvp) {
-  for (let dy = -R; dy <= R; dy++) {
-    for (let dx = -R; dx <= R; dx++) {
-      if (dx * dx + dy * dy > R * R + 0.5) continue;
-      const x = tx + dx;
-      const y = ty + dy;
-      if (!M.inBounds(x, y)) continue;
-      const i = M.idx(x, y);
-      if (!M.isLand(S.terrain[i])) continue;
+function conquer(tx, ty, _R, p, pvp) {
+  const pid = S.provOf && M.inBounds(tx, ty) ? S.provOf[M.idx(tx, ty)] : -1;
+  if (pid >= 0 && S.provinces[pid]) {
+    const prov = S.provinces[pid];
+    let gained = 0;
+    for (const i of prov.tiles) {
       const owner = S.territory[i];
       if (owner === p.slot) continue;
-      if (owner === -1) S.territory[i] = p.slot;
-      else {
+      if (owner === -1) {
+        S.territory[i] = p.slot;
+        gained++;
+      } else {
         const op = playerBySlot(owner);
-        if (pvp && (!op || !allied(op.id, p.id))) S.territory[i] = p.slot;
+        if (pvp && (!op || !allied(op.id, p.id))) {
+          S.territory[i] = p.slot;
+          gained++;
+        }
       }
     }
+    if (gained > 0) {
+      toast(`🏳️ Provinz „${prov.name}“ erobert!`, 'ok');
+    }
+  } else if (M.inBounds(tx, ty) && M.isLand(S.terrain[M.idx(tx, ty)])) {
+    const i = M.idx(tx, ty);
+    const owner = S.territory[i];
+    if (owner === -1 || (pvp && owner !== p.slot)) S.territory[i] = p.slot;
   }
   S.territoryDirty = true;
   S.territoryVersion++;
@@ -1680,6 +1696,31 @@ function renderWorld(ctx) {
   if (S.terrBuilt !== S.territoryVersion) rebuildTerritoryCanvas();
   ctx.drawImage(S.terrCanvas, 0, 0, M.W * TILE, M.H * TILE);
 
+  // Crusader-Kings-Provinzgrenzen
+  if (S.provOf && !S.provBorderCanvas) {
+    const bc = document.createElement('canvas');
+    bc.width = M.W;
+    bc.height = M.H;
+    const bctx = bc.getContext('2d');
+    const bimg = bctx.createImageData(M.W, M.H);
+    const po = S.provOf;
+    for (let i = 0; i < M.N; i++) {
+      const pid = po[i];
+      if (pid < 0) continue;
+      const x = i % M.W, y = Math.floor(i / M.W);
+      const edge = (x < M.W - 1 && po[i + 1] !== pid) || (y < M.H - 1 && po[i + M.W] !== pid);
+      if (edge) {
+        bimg.data[i * 4] = 20;
+        bimg.data[i * 4 + 1] = 15;
+        bimg.data[i * 4 + 2] = 10;
+        bimg.data[i * 4 + 3] = 115;
+      }
+    }
+    bctx.putImageData(bimg, 0, 0);
+    S.provBorderCanvas = bc;
+  }
+  if (S.provBorderCanvas) ctx.drawImage(S.provBorderCanvas, 0, 0, M.W * TILE, M.H * TILE);
+
   // Hauptstädte
   for (const p of S.players) {
     if (p.capital_x == null || p.is_eliminated) continue;
@@ -1900,6 +1941,9 @@ function bindCanvas() {
     const r = c.getBoundingClientRect();
     return { mx: e.clientX - r.left, my: e.clientY - r.top };
   };
+  const activePts = new Map();
+  let pinchDist = 0;
+
   c.addEventListener('contextmenu', (e) => e.preventDefault());
   c.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -1908,8 +1952,15 @@ function bindCanvas() {
   }, { passive: false });
 
   c.addEventListener('pointerdown', (e) => {
-    const { mx, my } = pos(e);
+    const p = pos(e);
+    activePts.set(e.pointerId, p);
     c.setPointerCapture(e.pointerId);
+    if (activePts.size === 2) {
+      const [p1, p2] = [...activePts.values()];
+      pinchDist = Math.hypot(p2.mx - p1.mx, p2.my - p1.my);
+      S.drag = null;
+      return;
+    }
     if (e.button === 2) {
       S.buildType = null;
       S.bridgeMode = false;
@@ -1919,35 +1970,51 @@ function bindCanvas() {
       return;
     }
     const cam = camNow();
-    S.drag = { sx: mx, sy: my, cx: cam.x, cy: cam.y, moved: false, paint: S.view === 'village' && ['wall', 'gate'].includes(S.buildType) };
+    S.drag = { sx: p.mx, sy: p.my, cx: cam.x, cy: cam.y, moved: false, paint: S.view === 'village' && ['wall', 'gate'].includes(S.buildType) };
     if (S.drag.paint) {
-      const t = screenToTile(mx, my);
+      const t = screenToTile(p.mx, p.my);
       placeBuilding(S.buildType, t.x, t.y);
     }
   });
   c.addEventListener('pointermove', (e) => {
-    const { mx, my } = pos(e);
-    S.hoverTile = screenToTile(mx, my);
+    const p = pos(e);
+    if (activePts.has(e.pointerId)) activePts.set(e.pointerId, p);
+    if (activePts.size === 2) {
+      const [p1, p2] = [...activePts.values()];
+      const nd = Math.hypot(p2.mx - p1.mx, p2.my - p1.my);
+      if (pinchDist > 10 && nd > 10) {
+        zoomAt((p1.mx + p2.mx) / 2, (p1.my + p2.my) / 2, nd / pinchDist);
+      }
+      pinchDist = nd;
+      return;
+    }
+    S.hoverTile = screenToTile(p.mx, p.my);
     const d = S.drag;
     if (!d) return;
-    if (Math.abs(mx - d.sx) + Math.abs(my - d.sy) > 5) d.moved = true;
+    if (Math.abs(p.mx - d.sx) + Math.abs(p.my - d.sy) > 5) d.moved = true;
     if (d.paint) {
       if (d.moved) placeBuilding(S.buildType, S.hoverTile.x, S.hoverTile.y);
       return;
     }
     if (d.moved) {
       const cam = camNow();
-      cam.x = d.cx - (mx - d.sx) / cam.z;
-      cam.y = d.cy - (my - d.sy) / cam.z;
+      cam.x = d.cx - (p.mx - d.sx) / cam.z;
+      cam.y = d.cy - (p.my - d.sy) / cam.z;
     }
   });
+  const endPtr = (e) => {
+    activePts.delete(e.pointerId);
+    if (activePts.size < 2) pinchDist = 0;
+  };
   c.addEventListener('pointerup', (e) => {
+    endPtr(e);
     const d = S.drag;
     S.drag = null;
     if (!d || d.moved || d.paint) return;
     const { mx, my } = pos(e);
     onCanvasClick(screenToTile(mx, my));
   });
+  c.addEventListener('pointercancel', endPtr);
   c.addEventListener('pointerleave', () => { S.hoverTile = null; });
 }
 
@@ -2099,9 +2166,12 @@ function panelInfo(el) {
     const i = M.idx(x, y);
     const known = S.explored[i] || S.fogOff;
     const owner = S.territory[i] >= 0 ? playerBySlot(S.territory[i]) : null;
-    el.appendChild(h(`<div class="info-box"><h3>Feld (${x}, ${y})</h3>
+    const pid = S.provOf ? S.provOf[i] : -1;
+    const prov = pid >= 0 ? S.provinces[pid] : null;
+    el.appendChild(h(`<div class="info-box"><h3>${known && prov ? `🏰 Provinz ${esc(prov.name)}` : `Feld (${x}, ${y})`}</h3>
       <div class="stat"><span>Gelände</span><b>${known ? M.TERRAIN_LABELS[S.terrain[i]] : '???'}${S.bridges.has(i) ? ' + Brücke' : ''}</b></div>
-      <div class="stat"><span>Besitzer</span><b>${known ? (owner ? esc(owner.kingdom_name) : 'Neutral') : '???'}</b></div></div>`));
+      <div class="stat"><span>Besitzer</span><b>${known ? (owner ? esc(owner.kingdom_name) : 'Neutral') : '???'}</b></div>
+      ${known && prov ? `<div class="stat"><span>Größe / Gold</span><b>${prov.tiles.length} Tiles · +${prov.goldBonus}💰</b></div>` : ''}</div>`));
   }
 
   const { d, consumption, mf } = estimateRates();
@@ -2375,6 +2445,15 @@ function bindStatic() {
     playSfx('click');
     setView(S.view === 'world' ? 'village' : 'world');
   };
+  $('btn-tutorial-menu').onclick = () => { playSfx('click'); $('modal-tutorial').hidden = false; };
+  $('btn-tutorial').onclick = () => { playSfx('click'); $('modal-tutorial').hidden = false; };
+  $('btn-cancel-mode').onclick = () => {
+    S.buildType = null;
+    S.bridgeMode = false;
+    S.selectedArmyId = null;
+    updateModeHint();
+    renderPanel();
+  };
   $('btn-admin').onclick = openAdminPanel;
   $('btn-mute').onclick = toggleMute;
   $('btn-mute-global').onclick = toggleMute;
@@ -2408,6 +2487,10 @@ function boot() {
   if (saved) {
     S.user = saved;
     showMenu();
+    if (localStorage.getItem('fk_tut_seen') !== '1') {
+      localStorage.setItem('fk_tut_seen', '1');
+      $('modal-tutorial').hidden = false;
+    }
   } else {
     showScreen('screen-login');
   }
