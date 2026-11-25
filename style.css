@@ -31,7 +31,7 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 #screen-game.active { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* ---------- Bausteine ---------- */
-.card { background: linear-gradient(180deg, var(--card2), var(--card)); border: 2px solid var(--border); border-radius: 6px; padding: 16px; box-shadow: 0 4px 0 #0008; }
+.card { background: linear-gradient(180deg, #3a2f23ee, #241d16f2); border: 2px solid #755b3d; border-radius: 8px; padding: 16px; box-shadow: 0 8px 24px #000a, inset 0 1px 0 #ffffff1a; backdrop-filter: blur(4px); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 label { display: block; margin: 8px 0; color: var(--muted); font-size: 12px; }
 input, select { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; background: #120f0b; color: var(--text); border: 2px solid var(--border); border-radius: 4px; font-family: inherit; font-size: 14px; }
@@ -92,9 +92,9 @@ input:focus, select:focus { outline: none; border-color: var(--gold); }
 form.row input { flex: 1; margin: 0; }
 
 /* ---------- Spiel ---------- */
-.hud { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: linear-gradient(180deg, #2f261b, #1d1812); border-bottom: 2px solid var(--border); flex-wrap: wrap; }
+.hud { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: linear-gradient(180deg, #352a1f, #1c1610); border-bottom: 2px solid #7a5f3f; box-shadow: 0 3px 12px #000a; flex-wrap: wrap; }
 .res-bar { display: flex; gap: 6px; flex-wrap: wrap; }
-.res { background: #0007; border: 1px solid #5a463088; padding: 4px 8px; border-radius: 4px; font-size: 13px; white-space: nowrap; }
+.res { background: #0d0a07cc; border: 1px solid #7a5f3f99; padding: 4px 9px; border-radius: 6px; font-size: 13px; white-space: nowrap; box-shadow: inset 0 1px 0 #ffffff12; }
 .res b { font-family: var(--mono); }
 .res.low b { color: #ff7b6e; }
 .banner { padding: 5px 12px; border-radius: 4px; font-weight: bold; font-family: var(--mono); font-size: 12px; text-align: center; }
@@ -111,7 +111,7 @@ form.row input { flex: 1; margin: 0; }
 .mode-hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #000c; border: 2px solid var(--gold); padding: 6px 14px; border-radius: 4px; font-family: var(--mono); font-size: 12px; pointer-events: none; }
 .paused { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0008; font-size: 32px; font-family: var(--mono); color: var(--gold); pointer-events: none; }
 
-.sidebar { width: 330px; display: flex; flex-direction: column; background: var(--bg2); border-left: 2px solid var(--border); min-height: 0; }
+.sidebar { width: 335px; display: flex; flex-direction: column; background: linear-gradient(180deg, #231d16, #18130e); border-left: 2px solid #755b3d; min-height: 0; box-shadow: -4px 0 16px #0008; }
 .tabs { display: flex; border-bottom: 2px solid var(--border); }
 .tab { flex: 1; background: transparent; color: var(--text); border: none; padding: 10px 0; cursor: pointer; font-size: 18px; position: relative; }
 .tab.active { background: var(--card2); box-shadow: inset 0 -3px 0 var(--gold); }
