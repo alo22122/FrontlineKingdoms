@@ -188,7 +188,7 @@ function renderAdmin() {
 // MAP-EDITOR
 // ---------------------------------------------------------------------------
 const ED = { grid: null, brush: 1, size: 3, painting: false, bound: false };
-const EDITOR_PX = 6;
+const EDITOR_PX = 3;
 
 export async function openMapEditor() {
   const { M } = api;
@@ -218,7 +218,10 @@ function renderEditorTools() {
     </div>
     <div class="row">
       <select id="ed-gen" style="width:auto;flex:1">
-        <option value="continents">Kontinente</option><option value="archipelago">Inseln</option>
+        <option value="continents">Kontinente</option><option value="world">Weltkarte</option>
+        <option value="europe">Europa</option><option value="germany">Deutschland</option>
+        <option value="turkey">Türkei</option><option value="rome">Römisches Reich</option>
+        <option value="ottoman">Osmanisches Reich</option><option value="archipelago">Inseln</option>
         <option value="valley">Tal</option><option value="desert">Wüste</option>
       </select>
       <button class="btn small" id="ed-generate">🎲 Generieren</button>
