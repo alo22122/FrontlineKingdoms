@@ -27,6 +27,7 @@ create table if not exists public.profiles (
     username    text not null unique,
     pw_hash     text,                       -- SHA-256 (null = Gast)
     wins        integer not null default 0,
+    medal       text not null default '',
     created_at  timestamptz not null default now()
 );
 
@@ -59,6 +60,7 @@ create table if not exists public.matches (
                    check (pvp_mode in ('school_schedule','always_war','peace')),
     territory      text not null default '',
     naps           jsonb not null default '{}'::jsonb,
+    wars           jsonb not null default '{}'::jsonb,
     global_banner  text not null default '',
     winner_id      uuid,
     created_at     timestamptz not null default now()
@@ -79,6 +81,7 @@ create table if not exists public.match_players (
     age                integer not null default 1 check (age between 1 and 4),
     alliance           text not null default '',
     vassal_of          uuid,
+    capital_level      integer not null default 1 check (capital_level between 1 and 3),
     wood               integer not null default 250,
     stone              integer not null default 150,
     gold               integer not null default 120,
