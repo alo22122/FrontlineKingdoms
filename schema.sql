@@ -64,6 +64,7 @@ create table if not exists public.matches (
     pings          jsonb not null default '[]'::jsonb,
     prov_guards    jsonb not null default '{}'::jsonb,
     prov_names     jsonb not null default '{}'::jsonb,
+    tributes       jsonb not null default '{}'::jsonb,
     global_banner  text not null default '',
     winner_id      uuid,
     created_at     timestamptz not null default now()
@@ -82,6 +83,7 @@ create table if not exists public.match_players (
     color              text not null default '#e63946',
     emblem             text not null default 'crown' check (emblem in ('crown','lion','dragon','sword')),
     flag_pattern       text not null default 'solid',
+    shield_frame       text not null default 'gold',
     age                integer not null default 1 check (age between 1 and 4),
     alliance           text not null default '',
     vassal_of          uuid,
