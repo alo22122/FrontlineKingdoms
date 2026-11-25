@@ -277,44 +277,53 @@ const PROV_NAMES = {
 export function generateProvinces(terrain, seed, mapType = 'continents') {
   const r = rng(seed + 31337);
   const centers = [];
-  const minDist = 32;
+  const minDist = 14;
+  const gridCell = minDist;
+  const gw = Math.ceil(W / gridCell) + 1;
+  const buckets = Array.from({ length: gw * gw }, () => []);
 
-  // Zentren mit Mindestabstand auf begehbarem Land wählen
-  for (let tries = 0; tries < 24000 && centers.length < 320; tries++) {
-    const x = 10 + Math.floor(r() * (W - 20));
-    const y = 10 + Math.floor(r() * (H - 20));
+  // Zentren mit Mindestabstand auf begehbarem Land wählen (mit Spatial-Hash)
+  for (let tries = 0; tries < 45000 && centers.length < 1400; tries++) {
+    const x = 4 + Math.floor(r() * (W - 8));
+    const y = 4 + Math.floor(r() * (H - 8));
     if (!isPassable(terrain[idx(x, y)])) continue;
+    const gx = Math.floor(x / gridCell), gy = Math.floor(y / gridCell);
     let ok = true;
-    for (const c of centers) {
-      if ((c.x - x) * (c.x - x) + (c.y - y) * (c.y - y) < minDist * minDist) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) centers.push({ id: centers.length, x, y, tiles: [], goldCount: 0 });
-  }
-  if (!centers.length) centers.push({ id: 0, x: 100, y: 100, tiles: [], goldCount: 0 });
-
-  const provOf = new Int16Array(N).fill(-1);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = idx(x, y);
-      if (!isLand(terrain[i])) continue;
-      let best = 0;
-      let bestD = Infinity;
-      for (let k = 0; k < centers.length; k++) {
-        const dx = centers[k].x - x;
-        const dy = centers[k].y - y;
-        const d = dx * dx + dy * dy;
-        if (d < bestD) {
-          bestD = d;
-          best = k;
+    for (let dy = -1; dy <= 1 && ok; dy++) {
+      for (let dx = -1; dx <= 1 && ok; dx++) {
+        const bx = gx + dx, by = gy + dy;
+        if (bx < 0 || by < 0 || bx >= gw || by >= gw) continue;
+        for (const c of buckets[by * gw + bx]) {
+          if ((c.x - x) * (c.x - x) + (c.y - y) * (c.y - y) < minDist * minDist) { ok = false; break; }
         }
       }
-      provOf[i] = best;
-      centers[best].tiles.push(i);
-      if (terrain[i] === T.GOLD) centers[best].goldCount++;
     }
+    if (ok) {
+      const c = { id: centers.length, x, y, tiles: [], goldCount: 0 };
+      centers.push(c);
+      buckets[gy * gw + gx].push(c);
+    }
+  }
+  if (!centers.length) centers.push({ id: 0, x: 320, y: 320, tiles: [], goldCount: 0 });
+
+  // O(N) Multi-Source BFS für schnelle, zusammenhängende Provinzen
+  const provOf = new Int16Array(N).fill(-1);
+  const q = new Int32Array(N);
+  let head = 0, tail = 0;
+  for (let k = 0; k < centers.length; k++) {
+    const ci = idx(centers[k].x, centers[k].y);
+    provOf[ci] = k;
+    centers[k].tiles.push(ci);
+    if (terrain[ci] === T.GOLD) centers[k].goldCount++;
+    q[tail++] = ci;
+  }
+  while (head < tail) {
+    const cur = q[head++], pid = provOf[cur];
+    const x = cur % W, y = (cur - x) / W;
+    if (x > 0)     { const ni = cur - 1; if (provOf[ni] === -1 && isLand(terrain[ni])) { provOf[ni] = pid; centers[pid].tiles.push(ni); if (terrain[ni] === T.GOLD) centers[pid].goldCount++; q[tail++] = ni; } }
+    if (x < W - 1) { const ni = cur + 1; if (provOf[ni] === -1 && isLand(terrain[ni])) { provOf[ni] = pid; centers[pid].tiles.push(ni); if (terrain[ni] === T.GOLD) centers[pid].goldCount++; q[tail++] = ni; } }
+    if (y > 0)     { const ni = cur - W; if (provOf[ni] === -1 && isLand(terrain[ni])) { provOf[ni] = pid; centers[pid].tiles.push(ni); if (terrain[ni] === T.GOLD) centers[pid].goldCount++; q[tail++] = ni; } }
+    if (y < H - 1) { const ni = cur + W; if (provOf[ni] === -1 && isLand(terrain[ni])) { provOf[ni] = pid; centers[pid].tiles.push(ni); if (terrain[ni] === T.GOLD) centers[pid].goldCount++; q[tail++] = ni; } }
   }
 
   const pool = PROV_NAMES[mapType] || PROV_NAMES.default;
