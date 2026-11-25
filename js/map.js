@@ -2,8 +2,8 @@
 // js/map.js – 200x200 Weltkarten, historische Karten & Crusader-Kings-Provinzen
 // ============================================================================
 
-export const W = 200;
-export const H = 200;
+export const W = 320;
+export const H = 320;
 export const N = W * H;
 
 export const T = { WATER: 0, GRASS: 1, FOREST: 2, HILL: 3, MOUNTAIN: 4, DESERT: 5, GOLD: 6 };
@@ -58,9 +58,9 @@ function makeNoise(seed, cell) {
 }
 
 function fbm(seed, scale = 1) {
-  const n1 = makeNoise(seed, 42 * scale);
-  const n2 = makeNoise(seed + 1, 20 * scale);
-  const n3 = makeNoise(seed + 2, 9 * scale);
+  const n1 = makeNoise(seed, 66 * scale);
+  const n2 = makeNoise(seed + 1, 32 * scale);
+  const n3 = makeNoise(seed + 2, 14 * scale);
   return (x, y) => n1(x, y) * 0.55 + n2(x, y) * 0.3 + n3(x, y) * 0.15;
 }
 
@@ -277,12 +277,12 @@ const PROV_NAMES = {
 export function generateProvinces(terrain, seed, mapType = 'continents') {
   const r = rng(seed + 31337);
   const centers = [];
-  const minDist = 13;
+  const minDist = 17;
 
   // Zentren mit Mindestabstand auf begehbarem Land wählen
-  for (let tries = 0; tries < 8000 && centers.length < 150; tries++) {
-    const x = 4 + Math.floor(r() * (W - 8));
-    const y = 4 + Math.floor(r() * (H - 8));
+  for (let tries = 0; tries < 14000 && centers.length < 220; tries++) {
+    const x = 5 + Math.floor(r() * (W - 10));
+    const y = 5 + Math.floor(r() * (H - 10));
     if (!isPassable(terrain[idx(x, y)])) continue;
     let ok = true;
     for (const c of centers) {
@@ -333,11 +333,12 @@ export function generateProvinces(terrain, seed, mapType = 'continents') {
 export function parseGrid(grid) {
   const str = typeof grid === 'string' ? grid : String(grid || '');
   const t = new Uint8Array(N).fill(T.GRASS);
-  // Abwärtskompatibilität für alte 100x100 Custom-Maps (2x hochskalieren)
-  if (str.length > 0 && str.length <= 10500) {
+  // Abwärtskompatibilität für 100x100 oder 200x200 Custom-Maps
+  const srcSize = str.length > 0 && str.length <= 10500 ? 100 : (str.length > 10500 && str.length <= 41000 ? 200 : 0);
+  if (srcSize > 0) {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        const si = Math.floor(y / 2) * 100 + Math.floor(x / 2);
+        const si = Math.floor((y * srcSize) / H) * srcSize + Math.floor((x * srcSize) / W);
         const k = TERRAIN_CHARS.indexOf(str[si]);
         t[idx(x, y)] = k >= 0 ? k : T.GRASS;
       }
