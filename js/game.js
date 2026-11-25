@@ -11,7 +11,8 @@ import * as M from './map.js';
 import { setupAdmin, openAdminPanel, openMapEditor, refreshAdminPanel } from './admin.js';
 
 const $ = (id) => document.getElementById(id);
-const TILE = 6;
+const TILE = 16;
+const CHUNK = 64;
 const PLAYER_COLORS = ['#e63946', '#457b9d', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb8500', '#8ac926', '#adb5bd'];
 const EMBLEMS = { crown: 'Krone', lion: 'Löwe', dragon: 'Drache', sword: 'Schwert' };
 const AGE_NAMES = ['', 'Dunkles Zeitalter', 'Feudalzeit', 'Ritterzeit', 'Kaiserzeit'];
@@ -656,14 +657,21 @@ function showGame() {
 
 function centerOnCapital() {
   const c = $('game-canvas'), z = S.camW.z;
-  const cx = S.me?.capital_x ?? 240, cy = S.me?.capital_y ?? 240;
+  const cx = S.me?.capital_x ?? 320, cy = S.me?.capital_y ?? 320;
   S.camW.x = cx * TILE + TILE / 2 - c.width / 2 / z;
   S.camW.y = cy * TILE + TILE / 2 - c.height / 2 / z;
 }
 function renderMinimap() {
   const mm = $('minimap');
   if (!mm || !S.terrain || !S.inGame) return;
-  drawMiniMap(mm, S.terrain, S.territory);
+  // Zeige Karte + eigenes/verbündetes Gebiet, aber KEINE Gegner auf der Minimap!
+  const friendlySlots = new Set(S.players.filter((p) => p.id === S.me?.id || allied(p.id, S.me?.id)).map((p) => p.slot));
+  if (!S._mmTerr) S._mmTerr = new Int8Array(M.N);
+  for (let i = 0; i < M.N; i++) {
+    const o = S.territory[i];
+    S._mmTerr[i] = (S.fogOff || friendlySlots.has(o)) ? o : -1;
+  }
+  drawMiniMap(mm, S.terrain, S._mmTerr);
   const ctx = mm.getContext('2d'), c = $('game-canvas');
   const sx = mm.width / (M.W * TILE), sy = mm.height / (M.H * TILE);
   ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
@@ -1430,27 +1438,29 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-function getTerrainCanvas() {
-  const season = S.match?.season || 'summer';
-  if (!S.terrainCanvases[season]) {
-    const c = document.createElement('canvas'); c.width = M.W * TILE; c.height = M.H * TILE;
-    const ctx = c.getContext('2d');
-    for (let i = 0; i < M.N; i++) {
-      const x = i % M.W, y = (i - x) / M.W, t = S.terrain[i];
-      const v = ((x * 73856093 ^ y * 19349663) >>> 0) % 4;
-      ctx.drawImage(getTerrainSprite(M.TERRAIN_KEYS[t], season, v), x * TILE, y * TILE, TILE, TILE);
-      // Mega Graphic Revamp: Küsten-Schaum & Berg-Schatten
-      if (t === M.T.WATER && ((x > 0 && M.isLand(S.terrain[i - 1])) || (x < M.W - 1 && M.isLand(S.terrain[i + 1])) || (y > 0 && M.isLand(S.terrain[i - M.W])) || (y < M.H - 1 && M.isLand(S.terrain[i + M.W])))) {
-        ctx.fillStyle = 'rgba(130, 210, 255, 0.28)';
-        ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-      } else if ((t === M.T.MOUNTAIN || t === M.T.HILL) && x < M.W - 1 && y < M.H - 1) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
-        ctx.fillRect((x + 1) * TILE, (y + 1) * TILE, TILE, TILE);
+function getTerrainChunk(cx, cy, season) {
+  const key = `${season}_${cx}_${cy}`;
+  if (!S.terrainCanvases[key]) {
+    const x0 = cx * CHUNK, y0 = cy * CHUNK;
+    const w = Math.min(CHUNK, M.W - x0), h = Math.min(CHUNK, M.H - y0);
+    const c = document.createElement('canvas'); c.width = w * TILE; c.height = h * TILE;
+    const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
+    for (let dy = 0; dy < h; dy++) {
+      const y = y0 + dy;
+      for (let dx = 0; dx < w; dx++) {
+        const x = x0 + dx, i = M.idx(x, y), t = S.terrain[i];
+        const v = ((x * 73856093 ^ y * 19349663) >>> 0) % 4;
+        ctx.drawImage(getTerrainSprite(M.TERRAIN_KEYS[t], season, v), dx * TILE, dy * TILE, TILE, TILE);
+        if (t === M.T.WATER && ((x > 0 && M.isLand(S.terrain[i - 1])) || (x < M.W - 1 && M.isLand(S.terrain[i + 1])) || (y > 0 && M.isLand(S.terrain[i - M.W])) || (y < M.H - 1 && M.isLand(S.terrain[i + M.W])))) {
+          ctx.fillStyle = 'rgba(130, 210, 255, 0.28)'; ctx.fillRect(dx * TILE, dy * TILE, TILE, TILE);
+        } else if ((t === M.T.MOUNTAIN || t === M.T.HILL) && dx < w - 1 && dy < h - 1) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.18)'; ctx.fillRect((dx + 1) * TILE, (dy + 1) * TILE, TILE, TILE);
+        }
       }
     }
-    S.terrainCanvases[season] = c;
+    S.terrainCanvases[key] = c;
   }
-  return S.terrainCanvases[season];
+  return S.terrainCanvases[key];
 }
 
 function rebuildTerritoryCanvas() {
@@ -1488,7 +1498,16 @@ function render() {
   const cam = S.camW, z = cam.z;
   ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
   const season = S.match.season;
-  ctx.drawImage(getTerrainCanvas(), 0, 0);
+  // Nur sichtbare 1024x1024 Terrain-Chunks zeichnen (volle 16x16 Pixel-Auflösung!)
+  const cX0 = Math.max(0, Math.floor(cam.x / (CHUNK * TILE)));
+  const cY0 = Math.max(0, Math.floor(cam.y / (CHUNK * TILE)));
+  const cX1 = Math.min(Math.ceil(M.W / CHUNK) - 1, Math.floor((cam.x + c.width / z) / (CHUNK * TILE)));
+  const cY1 = Math.min(Math.ceil(M.H / CHUNK) - 1, Math.floor((cam.y + c.height / z) / (CHUNK * TILE)));
+  for (let cy = cY0; cy <= cY1; cy++) {
+    for (let cx = cX0; cx <= cX1; cx++) {
+      ctx.drawImage(getTerrainChunk(cx, cy, season), cx * CHUNK * TILE, cy * CHUNK * TILE);
+    }
+  }
   // Verbundene Brücken
   for (const i of S.bridges) {
     const x = i % M.W, y = Math.floor(i / M.W);
@@ -1528,10 +1547,10 @@ function render() {
   if (S.provBorderCanvas) ctx.drawImage(S.provBorderCanvas, 0, 0, M.W * TILE, M.H * TILE);
 
   // Provinz-Namen direkt auf der Karte beim Hineinzoomen
-  if (z >= 1.05 && S.provinces) {
-    ctx.font = 'bold 7px monospace';
+  if (z >= 0.7 && S.provinces) {
+    ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255, 248, 225, 0.58)';
+    ctx.fillStyle = 'rgba(255, 248, 225, 0.62)';
     for (const prov of S.provinces) {
       const pi = M.idx(prov.cx, prov.cy);
       if (!S.explored[pi] && !S.fogOff) continue;
@@ -1608,18 +1627,29 @@ function render() {
       ctx.setLineDash([]);
     }
     if (a.unit_type === 'king') {
-      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, TILE * 0.9, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, TILE * 0.7, 0, Math.PI * 2); ctx.stroke();
     }
-    if (a.id === S.selectedArmyId) { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(px - 1, py - 1, TILE + 2, TILE + 2); }
-    ctx.drawImage(sprite, px, py);
+    if (a.id === S.selectedArmyId) {
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.2; ctx.strokeRect(px, py, TILE, TILE);
+      if (a.unit_type === 'catapult' || a.unit_type === 'warship') {
+        ctx.strokeStyle = 'rgba(255, 130, 60, 0.45)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, 3.5 * TILE, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.drawImage(sprite, px, py, TILE, TILE);
     const rank = S.armyRanks[a.id] || 0;
     const badge = (rank >= 2 ? '⭐⭐' : rank === 1 ? '⭐' : '') + ((S.entrench[a.id] || 0) >= 8 ? '🛡️' : '');
     if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, px + TILE / 2, py - 2); }
-    ctx.fillStyle = '#000c'; ctx.fillRect(px + 1, py + TILE - 1, 12, 6);
-    ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), px + 7, py + TILE + 4);
+    ctx.fillStyle = '#000c'; ctx.fillRect(px + TILE / 2 - 6, py + TILE - 5, 12, 6);
+    ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), px + TILE / 2, py + TILE);
   }
 
+  if (S.selectedTile) {
+    ctx.strokeStyle = `rgba(232, 182, 76, ${0.6 + 0.35 * Math.sin(tNow / 200)})`;
+    ctx.lineWidth = (1 / z) * 2;
+    ctx.strokeRect(S.selectedTile.x * TILE, S.selectedTile.y * TILE, TILE, TILE);
+  }
   if (!S.fogOff) {
     if (S.fogBuilt !== S.fogVersion) rebuildFogCanvas();
     ctx.drawImage(S.fogCanvas, 0, 0, M.W * TILE, M.H * TILE);
@@ -1685,7 +1715,7 @@ function screenToTile(mx, my) {
   return { x: Math.floor((S.camW.x + mx / S.camW.z) / TILE), y: Math.floor((S.camW.y + my / S.camW.z) / TILE) };
 }
 function zoomAt(mx, my, factor) {
-  const cam = S.camW, nz = clamp(cam.z * factor, 0.35, 6);
+  const cam = S.camW, nz = clamp(cam.z * factor, 0.2, 4);
   const wx = cam.x + mx / cam.z, wy = cam.y + my / cam.z;
   cam.z = nz; cam.x = wx - mx / nz; cam.y = wy - my / nz;
 }
