@@ -77,6 +77,7 @@ create table if not exists public.match_players (
     emblem             text not null default 'crown' check (emblem in ('crown','lion','dragon','sword')),
     age                integer not null default 1 check (age between 1 and 4),
     alliance           text not null default '',
+    vassal_of          uuid,
     wood               integer not null default 250,
     stone              integer not null default 150,
     gold               integer not null default 120,
