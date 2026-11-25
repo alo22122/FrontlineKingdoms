@@ -61,6 +61,9 @@ create table if not exists public.matches (
     territory      text not null default '',
     naps           jsonb not null default '{}'::jsonb,
     wars           jsonb not null default '{}'::jsonb,
+    pings          jsonb not null default '[]'::jsonb,
+    prov_guards    jsonb not null default '{}'::jsonb,
+    prov_names     jsonb not null default '{}'::jsonb,
     global_banner  text not null default '',
     winner_id      uuid,
     created_at     timestamptz not null default now()
