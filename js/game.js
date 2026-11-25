@@ -32,6 +32,7 @@ const BUILDINGS = {
   barracks:   { name: 'Kaserne',    cost: { wood: 50, gold: 20 }, desc: 'Ermöglicht Truppen auszubilden.' },
   tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, desc: 'Deckt Sicht auf & +15% Verteidigung.' },
   fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
+  wall:       { name: 'Mauer',      cost: { wood: 10 },           desc: '+25 Garnison-Schutz in der Provinz.' },
   blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
   market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' }
 };
@@ -62,7 +63,8 @@ const S = {
   acc: { wood: 0, gold: 0, raw_food: 0 }, popAcc: 0,
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastBanditCheck: 0, lastExploredSave: 0,
   authBusy: false, endShown: false, activeTab: 'build', drag: null,
-  lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1
+  lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
+  quests: { built: 0, conquered: 0, bandits: 0, fort: 0, done: {} }
 };
 
 // ---------------------------------------------------------------------------
@@ -113,7 +115,9 @@ function allied(idA, idB) {
   if (!idA || !idB) return false;
   if (idA === idB) return true;
   const a = playerById(idA), b = playerById(idB);
-  return Boolean(a && b && a.alliance && a.alliance === b.alliance);
+  if (!a || !b) return false;
+  if (a.vassal_of === b.id || b.vassal_of === a.id) return true;
+  return Boolean(a.alliance && a.alliance === b.alliance);
 }
 const isAdmin = () => isAdminUser(S.user, S.match);
 
@@ -308,7 +312,7 @@ async function reloadMatch() {
 async function reloadPlayers() {
   if (!S.match) return;
   const { data } = await sb.from('match_players')
-    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,age,alliance,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
+    .select('id,match_id,user_id,username,slot,kingdom_name,color,emblem,age,alliance,vassal_of,wood,stone,gold,raw_food,bread,food,morale,population,territory_percent,capital_x,capital_y,is_eliminated,created_at')
     .eq('match_id', S.match.id).order('slot');
   if (!data) return;
   S.players = data;
@@ -641,6 +645,12 @@ async function clientTick() {
     if (ints[k] !== 0) any = true;
   }
   if (any) {
+    // Vasallen-Steuer: 25% des Gold-Einkommens an den Lehnsherrn
+    if (me.vassal_of && ints.gold > 0) {
+      const tax = Math.max(1, Math.floor(ints.gold * 0.25));
+      ints.gold -= tax;
+      await rpcAdd(me.vassal_of, { gold: tax }, true);
+    }
     await rpcAdd(me.id, ints, true);
     for (const k in ints) me[k] = Math.max(0, me[k] + ints[k]);
   }
@@ -703,6 +713,8 @@ async function placeWorldBuilding(type, x, y) {
   if (data) S.buildings.push(data);
   playSfx('build');
   toast(`✅ ${def.name} gebaut!`, 'ok');
+  trackQuest('built', 1);
+  if (type === 'fort') trackQuest('fort', 1);
   advanceTut('world_built');
   S.buildType = null;
   updateModeHint();
@@ -779,7 +791,8 @@ async function trainUnits(type) {
 }
 
 function travelMs(unitType, x0, y0, x1, y1) {
-  return (Math.hypot(x1 - x0, y1 - y0) * (UNITS[unitType]?.speed || 2) * 1800) / speed();
+  const winterMult = S.match?.season === 'winter' ? 1.25 : 1;
+  return (Math.hypot(x1 - x0, y1 - y0) * (UNITS[unitType]?.speed || 2) * 1800 * winterMult) / speed();
 }
 
 function armyPos(a) {
@@ -792,18 +805,20 @@ function armyPos(a) {
 
 async function moveArmy(a, tx, ty) {
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
-  if (a.target_x != null) return toast('Armee ist bereits unterwegs.', 'err');
-  if (a.x === tx && a.y === ty) return;
-  const path = M.checkPath(S.terrain, S.bridges, a.x, a.y, tx, ty, a.unit_type);
+  const cur = armyPos(a);
+  const sx = a.target_x != null ? Math.round(cur.x) : a.x;
+  const sy = a.target_y != null ? Math.round(cur.y) : a.y;
+  if (sx === tx && sy === ty) return;
+  const path = M.checkPath(S.terrain, S.bridges, sx, sy, tx, ty, a.unit_type, S.match.season);
   if (!path.ok) return toast(path.reason, 'err');
   const owner = S.territory[M.idx(tx, ty)];
   const ownerP = owner >= 0 ? playerBySlot(owner) : null;
   const enemyArmy = S.armies.find((e) => e.player_id && e.player_id !== a.player_id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && !allied(e.player_id, a.player_id));
   const attacksPlayer = (ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id)) || enemyArmy;
   if (attacksPlayer && !pvpAllowed()) return toast('🕊️ Freizeit-Frieden! Angriffe auf Spieler sind gerade gesperrt.', 'err');
-  const arrives = new Date(now() + travelMs(a.unit_type, a.x, a.y, tx, ty)).toISOString();
-  a.target_x = tx; a.target_y = ty; a.arrives_at = arrives;
-  await sb.from('armies').update({ target_x: tx, target_y: ty, arrives_at: arrives }).eq('id', a.id);
+  const arrives = new Date(now() + travelMs(a.unit_type, sx, sy, tx, ty)).toISOString();
+  a.x = sx; a.y = sy; a.target_x = tx; a.target_y = ty; a.arrives_at = arrives;
+  await sb.from('armies').update({ x: sx, y: sy, target_x: tx, target_y: ty, arrives_at: arrives }).eq('id', a.id);
   playSfx(attacksPlayer ? 'horn' : 'click');
   advanceTut('army_moved');
   S.selectedArmyId = null;
@@ -972,7 +987,7 @@ async function resolveArrival(a) {
         return;
       }
       const garrison = ownerP
-        ? 60 + countType('fort', ownerP) * 50 + countType('tower', ownerP) * 25
+        ? 60 + countType('fort', ownerP) * 50 + countType('tower', ownerP) * 25 + countType('wall', ownerP) * 25
         : (tile === M.T.GOLD ? 85 : tile === M.T.HILL || tile === M.T.FOREST ? 60 : 40);
       const ap = armyPower({ ...a, count }, tx, ty);
       if (ap < garrison) {
@@ -993,24 +1008,46 @@ async function grantLoot(p, e) {
   const ruin = e.unit_type === 'ruin';
   const gold = ruin ? 80 + Math.floor(Math.random() * 70) : 30 + e.count * 4;
   await rpcAdd(p.id, ruin ? { gold, wood: 50 } : { gold, raw_food: 40 }, true);
+  if (p.id === S.me?.id && !ruin) trackQuest('bandits', 1);
   await sysChat(`💰 ${p.kingdom_name} plündert ${ruin ? 'eine Ruine' : 'ein Banditenlager'} (+${gold} Gold)!`);
 }
 
-function conquer(tx, ty, p, pvp) {
+async function conquer(tx, ty, p, pvp) {
   const pid = S.provOf && M.inBounds(tx, ty) ? S.provOf[M.idx(tx, ty)] : -1;
   if (pid >= 0 && S.provinces[pid]) {
     const prov = S.provinces[pid];
+    const tileSet = new Set(prov.tiles);
     let gained = 0;
+    const affectedOwners = new Set();
     for (const i of prov.tiles) {
       const owner = S.territory[i];
       if (owner === p.slot) continue;
-      if (owner === -1 || (pvp && !allied(playerBySlot(owner)?.id, p.id))) {
+      const op = owner >= 0 ? playerBySlot(owner) : null;
+      if (owner === -1 || (pvp && !allied(op?.id, p.id))) {
+        if (op) affectedOwners.add(op);
         S.territory[i] = p.slot; gained++;
       }
     }
     if (gained > 0) {
       toast(`🏳️ Provinz „${prov.name}“ erobert!`, 'ok');
+      if (p.id === S.me?.id) trackQuest('conquered', 1);
       if (prov.goldBonus > 0) rpcAdd(p.id, { gold: 25 }, true);
+      // Belagerung: Gebäude in der eroberten Provinz übernehmen
+      for (const b of S.buildings) {
+        if (b.type !== 'bridge' && b.player_id !== p.id && tileSet.has(M.idx(b.x, b.y))) {
+          b.player_id = p.id;
+          sb.from('buildings').update({ player_id: p.id }).eq('id', b.id);
+        }
+      }
+      // Vasallen-System: Wenn Hauptstadt eines Gegners in der Provinz lag -> Vasall!
+      for (const op of affectedOwners) {
+        if (op.capital_x != null && tileSet.has(M.idx(op.capital_x, op.capital_y)) && !op.vassal_of) {
+          op.vassal_of = p.id;
+          S.territory[M.idx(op.capital_x, op.capital_y)] = op.slot;
+          await sb.from('match_players').update({ vassal_of: p.id }).eq('id', op.id);
+          await sysChat(`👑 ${op.kingdom_name} hat die Hauptstadt verloren und ist jetzt Vasall von ${p.kingdom_name} (25% Gold-Steuer)!`);
+        }
+      }
     }
   }
   S.territoryDirty = true; S.territoryVersion++;
@@ -1316,7 +1353,11 @@ function onCanvasClick(t) {
   if (S.buildType) { placeWorldBuilding(S.buildType, t.x, t.y); return; }
   if (S.bridgeMode) { buildBridge(t.x, t.y); return; }
 
-  const own = S.armies.find((a) => a.player_id === S.me.id && a.target_x == null && a.x === t.x && a.y === t.y && a.id !== S.selectedArmyId);
+  const own = S.armies.find((a) => {
+    if (a.player_id !== S.me.id || a.id === S.selectedArmyId) return false;
+    const pos = armyPos(a);
+    return Math.abs(pos.x - t.x) <= 0.8 && Math.abs(pos.y - t.y) <= 0.8;
+  });
   const sel = S.armies.find((a) => a.id === S.selectedArmyId);
   if (sel) {
     if (own && own.x === sel.x && own.y === sel.y) { S.selectedArmyId = own.id; return renderPanel(); }
@@ -1399,9 +1440,34 @@ function btn(label, onClick, cls = 'btn small', disabled = false, title = '') {
   return b;
 }
 
+const QUESTS = [
+  { id: 'built', label: 'Baue 2 Gebäude', goal: 2, reward: 40 },
+  { id: 'conquered', label: 'Erobere 2 Provinzen', goal: 2, reward: 60 },
+  { id: 'bandits', label: 'Besiege 1 Banditenlager', goal: 1, reward: 50 },
+  { id: 'fort', label: 'Baue eine Festung', goal: 1, reward: 80 }
+];
+function trackQuest(id, inc) {
+  if (!S.me || S.quests.done[id]) return;
+  S.quests[id] = (S.quests[id] || 0) + inc;
+  const q = QUESTS.find((x) => x.id === id);
+  if (q && S.quests[id] >= q.goal) {
+    S.quests.done[id] = true;
+    rpcAdd(S.me.id, { gold: q.reward }, true);
+    playSfx('coins');
+    toast(`🎯 Mission „${q.label}“ erfüllt! +${q.reward}💰`, 'ok');
+  }
+}
+
 function panelBuild(el) {
   const me = S.me;
   const { d } = estimateRates();
+  el.appendChild(h(`<div class="info-box"><h3>🎯 Missionen</h3>` +
+    QUESTS.map((q) => {
+      const done = S.quests.done[q.id];
+      const cur = Math.min(q.goal, S.quests[q.id] || 0);
+      return `<div class="stat"><span>${done ? '✅' : '⬜'} ${q.label}</span><b>${done ? `+${q.reward}💰` : `${cur}/${q.goal}`}</b></div>`;
+    }).join('') + `</div>`));
+
   el.appendChild(h(`<div class="info-box"><h3>📊 Produktion / Sek.</h3>
     <div class="stat"><span>🪵 Holz</span><b>+${d.wood.toFixed(1)}</b></div>
     <div class="stat"><span>💰 Gold</span><b>+${d.gold.toFixed(1)}</b></div>
@@ -1462,7 +1528,7 @@ function panelArmy(el) {
       S.camW.x = p.x * TILE - $('game-canvas').width / 2 / S.camW.z;
       S.camW.y = p.y * TILE - $('game-canvas').height / 2 / S.camW.z;
       updateModeHint(); renderPanel();
-    }, 'btn small', p.moving));
+    }, 'btn small', false));
     el.appendChild(row);
     if (a.id === S.selectedArmyId && !p.moving) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginBottom = '8px';
@@ -1497,10 +1563,11 @@ function panelDiplo(el) {
   el.appendChild(h('<h3>👑 Königreiche (Ziel: 70%)</h3>'));
   for (const p of [...S.players].sort((a, b) => (b.territory_percent || 0) - (a.territory_percent || 0))) {
     const isMe = p.id === me.id, ally = !isMe && allied(p.id, me.id);
+    const lord = p.vassal_of ? playerById(p.vassal_of) : null;
     const box = document.createElement('div'); box.className = 'info-box'; box.style.borderLeft = `5px solid ${p.color}`;
     const head = document.createElement('div'); head.className = 'row';
     head.appendChild(emblemCanvas(p.emblem, p.color, 24));
-    head.appendChild(h(`<div><b>${esc(p.kingdom_name)}</b>${isMe ? ' (Du)' : ''}${ally ? ' 🤝' : ''}${p.is_eliminated ? ' ☠️' : ''}<br><span class="muted">${AGE_NAMES[p.age]} · 🗺️ ${(p.territory_percent || 0).toFixed(1)}%${p.alliance ? ' · „' + esc(p.alliance) + '“' : ''}</span></div>`));
+    head.appendChild(h(`<div><b>${esc(p.kingdom_name)}</b>${isMe ? ' (Du)' : ''}${ally ? ' 🤝' : ''}${p.is_eliminated ? ' ☠️' : ''}<br><span class="muted">${AGE_NAMES[p.age]} · 🗺️ ${(p.territory_percent || 0).toFixed(1)}%${lord ? ' · 👑 Vasall von ' + esc(lord.kingdom_name) : ''}${p.alliance ? ' · „' + esc(p.alliance) + '“' : ''}</span></div>`));
     box.appendChild(head);
     if (!isMe && !p.is_eliminated) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginTop = '6px';
@@ -1523,6 +1590,15 @@ async function showEnd() {
   const iWon = winner && winner.user_id === S.user.id;
   $('end-title').textContent = iWon ? '🏆 SIEG!' : '⚔️ Spiel beendet';
   $('end-text').textContent = winner ? `${winner.kingdom_name} (${winner.username}) hat 70% der Welt erobert!` : 'Das Spiel ist vorbei.';
+  const byTerr = [...S.players].sort((a, b) => (b.territory_percent || 0) - (a.territory_percent || 0))[0];
+  const byGold = [...S.players].sort((a, b) => (b.gold || 0) - (a.gold || 0))[0];
+  const byBld = [...S.players].sort((a, b) => S.buildings.filter((x) => x.player_id === b.id).length - S.buildings.filter((x) => x.player_id === a.id).length)[0];
+  const byArmy = [...S.players].sort((a, b) => S.armies.filter((x) => x.player_id === b.id).reduce((s, x) => s + x.count, 0) - S.armies.filter((x) => x.player_id === a.id).reduce((s, x) => s + x.count, 0))[0];
+  $('end-stats').innerHTML = `<h3>📊 Kriegs-Statistik</h3>
+    <div class="stat"><span>🗺️ Größtes Reich</span><b>${byTerr ? `${esc(byTerr.kingdom_name)} (${(byTerr.territory_percent || 0).toFixed(1)}%)` : '-'}</b></div>
+    <div class="stat"><span>🏰 Meiste Gebäude</span><b>${byBld ? `${esc(byBld.kingdom_name)} (${S.buildings.filter((x) => x.player_id === byBld.id).length})` : '-'}</b></div>
+    <div class="stat"><span>⚔️ Stärkste Armee</span><b>${byArmy ? `${esc(byArmy.kingdom_name)} (${S.armies.filter((x) => x.player_id === byArmy.id).reduce((s, x) => s + x.count, 0)})` : '-'}</b></div>
+    <div class="stat"><span>💰 Reichster König</span><b>${byGold ? `${esc(byGold.kingdom_name)} (${fmt(byGold.gold)})` : '-'}</b></div>`;
   $('modal-end').hidden = false;
   if (iWon) playSfx('horn');
   const { data } = await sb.from('map_snapshots').select('owners_data,created_at').eq('match_id', S.match.id).order('created_at');
