@@ -71,7 +71,7 @@ const S = {
   lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
-  reconUntil: 0, frontPush: false, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {}
+  reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {}
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -829,24 +829,66 @@ function computeSupply() {
   }
 }
 
+function getBorderProvinces() {
+  if (!S.me || !S.provinces || !S.provOf) return [];
+  const res = [];
+  for (const prov of S.provinces) {
+    if (prov.isSea) continue;
+    const pi = M.idx(prov.cx, prov.cy);
+    if (S.territory[pi] !== S.me.slot) continue;
+    // Prüfe ob Nachbar-Tile anderem Spieler oder Neutral gehört
+    let isBorder = false;
+    for (const ti of prov.tiles) {
+      const x = ti % M.W, y = (ti - x) / M.W;
+      if ((x > 0 && S.territory[ti - 1] !== S.me.slot && M.isLand(S.terrain[ti - 1])) ||
+          (x < M.W - 1 && S.territory[ti + 1] !== S.me.slot && M.isLand(S.terrain[ti + 1])) ||
+          (y > 0 && S.territory[ti - M.W] !== S.me.slot && M.isLand(S.terrain[ti - M.W])) ||
+          (y < M.H - 1 && S.territory[ti + M.W] !== S.me.slot && M.isLand(S.terrain[ti + M.W]))) {
+        isBorder = true; break;
+      }
+    }
+    if (isBorder) res.push(prov);
+  }
+  return res;
+}
+
+async function assignFrontline() {
+  const borders = getBorderProvinces();
+  if (!borders.length) return toast('Keine Grenzprovinzen gefunden.', 'err');
+  if (S.frontTarget) {
+    borders.sort((a, b) => Math.hypot(a.cx - S.frontTarget.x, a.cy - S.frontTarget.y) - Math.hypot(b.cx - S.frontTarget.x, b.cy - S.frontTarget.y));
+  }
+  const activeBorders = borders.slice(0, 12);
+  const idle = S.armies.filter((a) => a.player_id === S.me.id && a.target_x == null && a.unit_type !== 'ship' && a.unit_type !== 'warship' && a.unit_type !== 'king' && a.unit_type !== 'spy');
+  if (!idle.length) return toast('Keine freien Land-Armeen zum Verteilen.', 'err');
+  let moved = 0;
+  for (let k = 0; k < idle.length; k++) {
+    const target = activeBorders[k % activeBorders.length];
+    if (idle[k].x !== target.cx || idle[k].y !== target.cy) {
+      await moveArmy(idle[k], target.cx, target.cy);
+      moved++;
+    }
+  }
+  playSfx('horn');
+  toast(`🛡️ ${moved} Armee(n) an die Frontlinie verteilt!`, 'ok');
+}
+
 async function runFrontPush() {
   if (!S.frontPush || !S.me || !pvpAllowed()) return;
   const idle = S.armies.filter((a) => a.player_id === S.me.id && a.target_x == null && a.unit_type !== 'ship' && a.unit_type !== 'warship' && a.unit_type !== 'king' && a.unit_type !== 'spy');
-  for (const a of idle.slice(0, 3)) {
+  for (const a of idle.slice(0, 4)) {
     const pid = S.provOf ? S.provOf[M.idx(a.x, a.y)] : -1;
-    const curProv = pid >= 0 ? S.provinces[pid] : null;
-    if (!curProv) continue;
-    // Suche eine angrenzende feindliche oder neutrale Provinz
-    const targetProv = S.provinces.find((pr) =>
+    const cands = S.provinces.filter((pr) =>
       !pr.isSea && pr.id !== pid && Math.hypot(pr.cx - a.x, pr.cy - a.y) <= 24 &&
       S.territory[M.idx(pr.cx, pr.cy)] !== S.me.slot &&
       !allied(playerBySlot(S.territory[M.idx(pr.cx, pr.cy)])?.id, S.me.id) &&
       !hasNap(S.me.id, playerBySlot(S.territory[M.idx(pr.cx, pr.cy)])?.id)
     );
-    if (targetProv) {
-      await moveArmy(a, targetProv.cx, targetProv.cy);
-      break;
+    if (!cands.length) continue;
+    if (S.frontTarget) {
+      cands.sort((p1, p2) => Math.hypot(p1.cx - S.frontTarget.x, p1.cy - S.frontTarget.y) - Math.hypot(p2.cx - S.frontTarget.x, p2.cy - S.frontTarget.y));
     }
+    await moveArmy(a, cands[0].cx, cands[0].cy);
   }
 }
 
@@ -1288,24 +1330,18 @@ async function resolveArrival(a) {
         await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
         return;
       }
-      if (ownerP && S.provCooldown[ownerP.id] && now() < S.provCooldown[ownerP.id]) {
-        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-        toast(`🛡️ ${ownerP.kingdom_name} hat noch kurzen Eroberungs-Schutz!`, 'err');
-        return;
-      }
       const pid = S.provOf && M.inBounds(tx, ty) ? S.provOf[M.idx(tx, ty)] : -1;
       const guardBonus = pid >= 0 ? (S.match?.prov_guards?.[pid] || 0) : 0;
       const garrison = ownerP
-        ? 160 + guardBonus + ((ownerP.capital_level || 1) - 1) * 90 + countType('fort', ownerP) * 90 + countType('tower', ownerP) * 45 + countType('wall', ownerP) * 40
-        : (tile === M.T.GOLD ? 180 : tile === M.T.HILL || tile === M.T.FOREST ? 140 : 100);
+        ? 110 + guardBonus + ((ownerP.capital_level || 1) - 1) * 80 + countType('fort', ownerP) * 70 + countType('tower', ownerP) * 35 + countType('wall', ownerP) * 30
+        : (tile === M.T.GOLD ? 140 : tile === M.T.HILL || tile === M.T.FOREST ? 100 : 75);
       const ap = armyPower({ ...a, count }, tx, ty);
       if (ap < garrison) {
         await deleteArmy(a);
         await sysChat(`🛡️ Angriff von ${attacker.kingdom_name} scheiterte an der Provinz-Garnison (Kraft ${Math.round(ap)} < ${garrison})!`);
         return;
       }
-      if (ownerP) S.provCooldown[ownerP.id] = now() + 45000 / speed();
-      count = Math.max(1, Math.ceil(count * (1 - (garrison / ap) * 0.55)));
+      count = Math.max(1, Math.ceil(count * (1 - (garrison / ap) * 0.45)));
     }
     await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
     conquer(tx, ty, attacker, pvp);
@@ -1518,18 +1554,32 @@ function render() {
   if (S.terrBuilt !== S.territoryVersion) rebuildTerritoryCanvas();
   ctx.drawImage(S.terrCanvas, 0, 0, M.W * TILE, M.H * TILE);
 
-  // HOI4 Frontlinien zwischen verfeindeten Reichen
+  // HOI4 Frontlinien + Angriffspfeil
   if (pvpAllowed()) {
-    ctx.fillStyle = `rgba(255, 65, 55, ${0.65 + 0.3 * Math.sin(now() / 220)})`;
+    ctx.fillStyle = `rgba(255, 65, 55, ${0.7 + 0.25 * Math.sin(now() / 220)})`;
     const terr = S.territory;
     for (let i = 0; i < M.N; i += 2) {
       const o = terr[i]; if (o < 0) continue;
       const x = i % M.W, y = (i - x) / M.W;
       const right = x < M.W - 1 ? terr[i + 1] : -1;
       const down = y < M.H - 1 ? terr[i + M.W] : -1;
-      if (right >= 0 && right !== o && !allied(playerBySlot(o)?.id, playerBySlot(right)?.id)) ctx.fillRect((x + 1) * TILE - 1, y * TILE, 2, TILE);
-      if (down >= 0 && down !== o && !allied(playerBySlot(o)?.id, playerBySlot(down)?.id)) ctx.fillRect(x * TILE, (y + 1) * TILE - 1, TILE, 2);
+      if (right >= 0 && right !== o && !allied(playerBySlot(o)?.id, playerBySlot(right)?.id)) ctx.fillRect((x + 1) * TILE - 1.5, y * TILE, 3, TILE);
+      if (down >= 0 && down !== o && !allied(playerBySlot(o)?.id, playerBySlot(down)?.id)) ctx.fillRect(x * TILE, (y + 1) * TILE - 1.5, TILE, 3);
     }
+  }
+  if (S.frontTarget) {
+    const sx = (S.me.capital_x || 320) * TILE + TILE / 2, sy = (S.me.capital_y || 320) * TILE + TILE / 2;
+    const tx = S.frontTarget.x * TILE + TILE / 2, ty = S.frontTarget.y * TILE + TILE / 2;
+    ctx.strokeStyle = S.frontPush ? 'rgba(255, 90, 60, 0.85)' : 'rgba(255, 210, 63, 0.75)';
+    ctx.lineWidth = 4; ctx.setLineDash(S.frontPush ? [] : [8, 6]);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
+    const ang = Math.atan2(ty - sy, tx - sx);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - Math.cos(ang - 0.5) * 18, ty - Math.sin(ang - 0.5) * 18);
+    ctx.lineTo(tx - Math.cos(ang + 0.5) * 18, ty - Math.sin(ang + 0.5) * 18);
+    ctx.closePath(); ctx.fill();
   }
 
   if (S.provOf && !S.provBorderCanvas) {
@@ -1643,6 +1693,23 @@ function render() {
     if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, px + TILE / 2, py - 2); }
     ctx.fillStyle = '#000c'; ctx.fillRect(px + TILE / 2 - 6, py + TILE - 5, 12, 6);
     ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), px + TILE / 2, py + TILE);
+  }
+
+  // HOI4 Battle Bubbles (🟢/🔴 %) auf aktiven Front-Gefechten
+  if (pvpAllowed()) {
+    const myIdle = S.armies.filter((a) => a.player_id === S.me.id && a.target_x == null && a.count > 0);
+    for (const a of myIdle) {
+      const foe = S.armies.find((e) => e.player_id && e.player_id !== S.me.id && !allied(e.player_id, S.me.id) && e.target_x == null && Math.max(Math.abs(e.x - a.x), Math.abs(e.y - a.y)) <= 1.5);
+      if (!foe) continue;
+      const ap = armyPower(a, a.x, a.y), dp = armyPower(foe, foe.x, foe.y);
+      const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
+      const bx = ((a.x + foe.x) / 2) * TILE + TILE / 2, by = ((a.y + foe.y) / 2) * TILE - 4;
+      ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
+      ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(String(pct), bx, by + 2);
+    }
   }
 
   if (S.selectedTile) {
@@ -1870,6 +1937,13 @@ async function gatherAllArmies() {
 
 function onCanvasClick(t) {
   if (!S.me || !S.match || !M.inBounds(t.x, t.y)) return;
+  if (S.frontlineMode) {
+    S.frontTarget = { x: t.x, y: t.y };
+    S.frontlineMode = false;
+    playSfx('horn');
+    toast(`🏹 Angriffsziel gesetzt! Starte jetzt „▶️ Angriff“!`, 'ok');
+    updateModeHint(); renderPanel(); return;
+  }
   if (S.buildType) { queueBuild(S.buildType, t.x, t.y); return; }
   if (S.bridgeMode) { queueBuild('bridge', t.x, t.y); return; }
 
@@ -2065,12 +2139,16 @@ function panelArmy(el) {
     el.appendChild(row);
   }
   el.appendChild(btn('⚡ Alle zur Hauptstadt sammeln', gatherAllArmies, 'btn small gold'));
-  el.appendChild(btn(S.frontPush ? '🛑 Front-Vorstoß stoppen' : '⚔️ HOI4 Front-Vorstoß', () => {
+  el.appendChild(btn('🛡️ An Frontlinie verteilen', assignFrontline, 'btn small primary'));
+  el.appendChild(btn(S.frontlineMode ? '❌ Zielwahl abbrechen' : '🏹 Angriffsziel setzen', () => {
+    S.frontlineMode = !S.frontlineMode; updateModeHint(); renderPanel();
+  }, `btn small${S.frontlineMode ? ' active' : ''}`));
+  el.appendChild(btn(S.frontPush ? '⏸️ Angriff pausieren' : '▶️ Angriff starten', () => {
     S.frontPush = !S.frontPush;
     playSfx('horn');
-    toast(S.frontPush ? '⚔️ Front-Vorstoß aktiv! Truppen rücken automatisch vor.' : '🛑 Front-Vorstoß gestoppt.', 'ok');
+    toast(S.frontPush ? '⚔️ HOI4-Angriff gestartet! Frontlinie rückt vor.' : '⏸️ Front-Angriff pausiert.', 'ok');
     renderPanel();
-  }, `btn small${S.frontPush ? ' danger' : ' primary'}`));
+  }, `btn small${S.frontPush ? ' danger' : ' gold'}`));
   el.appendChild(btn('✈️ Aufklärung 30s (35💰)', async () => {
     if (!(await spend({ gold: 35 }))) return;
     S.reconUntil = now() + 30000;
