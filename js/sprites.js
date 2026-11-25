@@ -48,50 +48,60 @@ export function getTerrainSprite(type, season = 'summer') {
   const winter = season === 'winter';
 
   if (type === 'grass') {
-    px(ctx, 0, 0, winter ? '#d9e8f5' : '#4f8f3b', 16, 16);
-    px(ctx, 2, 3, winter ? '#c3d7eb' : '#437d31', 2, 1);
-    px(ctx, 10, 6, winter ? '#eef6fc' : '#63a84b', 2, 1);
-    px(ctx, 5, 11, winter ? '#c3d7eb' : '#437d31', 1, 2);
-    px(ctx, 12, 13, winter ? '#eef6fc' : '#63a84b', 2, 1);
+    px(ctx, 0, 0, winter ? '#d7e7f5' : '#4a8c38', 16, 16);
+    px(ctx, 1, 2, winter ? '#c3d7eb' : '#3f7b2f', 3, 1);
+    px(ctx, 9, 4, winter ? '#eef6fc' : '#63ab4a', 3, 1);
+    px(ctx, 4, 9, winter ? '#c3d7eb' : '#3d772d', 2, 2);
+    px(ctx, 11, 12, winter ? '#eef6fc' : '#63ab4a', 2, 1);
+    px(ctx, 7, 14, winter ? '#e3effa' : '#589c42', 2, 1);
   } else if (type === 'forest') {
-    px(ctx, 0, 0, winter ? '#cddfee' : '#3a722a', 16, 16);
+    px(ctx, 0, 0, winter ? '#c8dceb' : '#356b26', 16, 16);
+    // Schatten
+    px(ctx, 2, 12, 'rgba(0,0,0,0.2)', 6, 2);
+    px(ctx, 9, 13, 'rgba(0,0,0,0.2)', 6, 2);
     // Baum 1
     px(ctx, 4, 8, '#5a3821', 2, 5);
-    px(ctx, 2, 3, winter ? '#9dc2d8' : '#24521a', 6, 6);
-    px(ctx, 3, 2, winter ? '#e6f2fa' : '#2f6b22', 4, 3);
+    px(ctx, 2, 3, winter ? '#97bdd4' : '#204a17', 6, 6);
+    px(ctx, 3, 2, winter ? '#e6f2fa' : '#2f6e22', 4, 3);
+    px(ctx, 3, 2, winter ? '#ffffff' : '#458f34', 2, 2);
     // Baum 2
-    px(ctx, 11, 9, '#5a3821', 2, 5);
-    px(ctx, 9, 5, winter ? '#89b0c9' : '#1f4716', 6, 5);
+    px(ctx, 11, 9, '#4f301b', 2, 5);
+    px(ctx, 9, 5, winter ? '#85adc7' : '#1b4013', 6, 5);
     px(ctx, 10, 4, winter ? '#d8ebf7' : '#2c6320', 4, 2);
   } else if (type === 'water') {
-    px(ctx, 0, 0, winter ? '#4a7ba8' : '#2563a8', 16, 16);
-    px(ctx, 2, 4, winter ? '#89b8e0' : '#3b82cf', 5, 1);
-    px(ctx, 8, 10, winter ? '#a6cef0' : '#5298e3', 6, 1);
-    px(ctx, 3, 13, winter ? '#75a6d1' : '#3b82cf', 4, 1);
+    px(ctx, 0, 0, winter ? '#4674a1' : '#1f5a9c', 16, 16);
+    px(ctx, 2, 3, winter ? '#89b8e0' : '#367ec9', 5, 1);
+    px(ctx, 3, 4, winter ? '#b3d6f5' : '#5ea3eb', 3, 1);
+    px(ctx, 8, 10, winter ? '#a6cef0' : '#4a90db', 6, 1);
+    px(ctx, 3, 13, winter ? '#75a6d1' : '#367ec9', 4, 1);
   } else if (type === 'mountain') {
-    px(ctx, 0, 0, winter ? '#b8c8d8' : '#5d6b56', 16, 16);
-    px(ctx, 3, 11, '#5b636e', 10, 4);
-    px(ctx, 4, 7, '#6f7885', 8, 5);
-    px(ctx, 6, 3, '#8892a0', 4, 5);
+    px(ctx, 0, 0, winter ? '#b3c4d4' : '#55634e', 16, 16);
+    px(ctx, 2, 12, '#4a515c', 12, 4);
+    px(ctx, 3, 8, '#606875', 10, 5);
+    px(ctx, 5, 4, '#798291', 6, 5);
+    px(ctx, 8, 5, '#5b6370', 3, 8); // Schattenseite rechts
     // Schneegipfel
-    px(ctx, 6, 2, '#f2f7fc', 4, 3);
-    px(ctx, 7, 1, '#ffffff', 2, 2);
+    px(ctx, 5, 2, '#eef5fc', 6, 3);
+    px(ctx, 6, 1, '#ffffff', 4, 2);
   } else if (type === 'hill') {
-    px(ctx, 0, 0, winter ? '#cddfee' : '#5b9644', 16, 16);
-    px(ctx, 2, 8, winter ? '#b3c8db' : '#73ab59', 12, 5);
+    px(ctx, 0, 0, winter ? '#c8dceb' : '#55913f', 16, 16);
+    px(ctx, 2, 8, winter ? '#aec4d9' : '#6ea855', 12, 5);
     px(ctx, 4, 6, winter ? '#dceaf5' : '#85bd68', 8, 3);
-    px(ctx, 3, 13, winter ? '#9eb4c9' : '#437332', 10, 1);
+    px(ctx, 5, 6, winter ? '#eef6fc' : '#9bd17d', 4, 1);
+    px(ctx, 3, 13, winter ? '#96acc2' : '#3f6e2e', 10, 1);
   } else if (type === 'desert') {
     px(ctx, 0, 0, '#d8b467', 16, 16);
-    px(ctx, 2, 5, '#c49d4d', 5, 1);
-    px(ctx, 9, 10, '#e5c67e', 5, 1);
-    px(ctx, 5, 13, '#c49d4d', 3, 1);
+    px(ctx, 2, 5, '#c29846', 6, 1);
+    px(ctx, 8, 10, '#ebd08d', 6, 1);
+    px(ctx, 4, 13, '#c29846', 4, 1);
+    px(ctx, 11, 3, '#edd598', 2, 1);
   } else if (type === 'gold') {
-    px(ctx, 0, 0, winter ? '#c5d6e6' : '#586952', 16, 16);
-    px(ctx, 3, 6, '#6e7680', 10, 7);
+    px(ctx, 0, 0, winter ? '#c0d1e0' : '#53644d', 16, 16);
+    px(ctx, 3, 6, '#656d78', 10, 7);
     px(ctx, 5, 7, '#f5c542', 3, 3);
     px(ctx, 9, 9, '#ffd966', 3, 3);
-    px(ctx, 6, 10, '#d49b1a', 2, 2);
+    px(ctx, 6, 7, '#fff3b0', 1, 1);
+    px(ctx, 10, 9, '#fff3b0', 1, 1);
   } else if (type === 'bridge') {
     px(ctx, 0, 0, '#2563a8', 16, 16);
     px(ctx, 0, 4, '#7a4e28', 16, 8);
