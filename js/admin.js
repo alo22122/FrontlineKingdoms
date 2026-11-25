@@ -72,8 +72,7 @@ function renderAdmin() {
       <h3>⚡ Live-Events</h3>
       <div class="row">
         <button class="btn small gold" id="adm-goldrush">💰 Goldrausch</button>
-        <button class="btn small danger" id="adm-barb">🪓 Barbaren-Angriff</button>
-        <button class="btn small danger" id="adm-fire">🔥 Feuer</button>
+        <button class="btn small" id="adm-season2">❄️/☀️ Jahreszeit</button>
       </div>
       <label>Globaler Banner-Text
         <input id="adm-banner" maxlength="120" value="${esc(m.global_banner)}" placeholder="z.B. Turnier endet um 15 Uhr!">
@@ -125,18 +124,7 @@ function renderAdmin() {
     playSfx('coins');
     await updateMatch({ global_banner: '💰 GOLDRAUSCH! Alle Königreiche erhalten 150 Gold!' }, 'Goldrausch ausgelöst');
   };
-  $('adm-barb').onclick = async () => {
-    if (m.status !== 'running') return api.toast('Nur während das Spiel läuft.', 'err');
-    await api.spawnBarbarians();
-    playSfx('horn');
-    await updateMatch({ global_banner: '🪓 BARBAREN-ANGRIFF! Verteidigt eure Hauptstädte!' }, 'Barbaren losgeschickt');
-  };
-  $('adm-fire').onclick = async () => {
-    await api.triggerFire(1, true);
-    playSfx('fire');
-    api.toast('Feuer gelegt!', 'ok');
-    await api.fullReload();
-  };
+  $('adm-season2').onclick = () => updateMatch({ season: m.season === 'winter' ? 'summer' : 'winter' }, 'Jahreszeit gewechselt');
   $('adm-banner-set').onclick = () => updateMatch({ global_banner: $('adm-banner').value.trim() }, 'Banner gesetzt');
   $('adm-banner-clear').onclick = () => updateMatch({ global_banner: '' }, 'Banner entfernt');
   $('adm-editor').onclick = openMapEditor;
