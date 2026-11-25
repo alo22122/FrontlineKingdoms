@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontline Kingdoms – Realms of Iron & Crown</title>
+  <meta name="description" content="Mittelalterliches Browser-Multiplayer-Strategiespiel: Baue dein Dorf, erobere die Weltkarte, schmiede Allianzen." />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <button id="btn-mute-global" class="mute-float" title="Ton an/aus">🔊</button>
+  <div id="toasts"></div>
+
+  <!-- ============ LOGIN ============ -->
+  <section id="screen-login" class="screen active">
+    <div class="card login-card">
+      <h1 class="logo">⚔️ Frontline Kingdoms</h1>
+      <p class="subtitle">Realms of Iron &amp; Crown</p>
+      <label>Name<input id="login-name" maxlength="20" autocomplete="username" /></label>
+      <label>Passwort<input id="login-pw" type="password" autocomplete="current-password" /></label>
+      <div class="row">
+        <button id="btn-login" class="btn primary">Einloggen</button>
+        <button id="btn-register" class="btn">Registrieren</button>
+      </div>
+      <div class="divider">oder</div>
+      <button id="btn-guest" class="btn ghost">🎭 Als Gast spielen</button>
+      <p id="login-error" class="error"></p>
+    </div>
+  </section>
+
+  <!-- ============ HAUPTMENÜ ============ -->
+  <section id="screen-menu" class="screen">
+    <header class="menu-header">
+      <h1 class="logo small">⚔️ Frontline Kingdoms</h1>
+      <div class="row">
+        <span id="menu-user" class="pill"></span>
+        <button id="btn-editor-menu" class="btn" hidden>🗺️ Map-Editor</button>
+        <button id="btn-logout" class="btn ghost">Abmelden</button>
+      </div>
+    </header>
+    <div class="menu-grid">
+      <div class="card">
+        <h2>🏆 Bestenliste</h2>
+        <ol id="leaderboard" class="leaderboard"></ol>
+      </div>
+      <div class="card">
+        <h2>🏰 Offene Spiele</h2>
+        <div id="lobby-list" class="lobby-list"></div>
+      </div>
+      <div class="card">
+        <h2>➕ Spiel erstellen</h2>
+        <label>Name des Spiels<input id="create-name" maxlength="30" placeholder="z.B. Klasse 8b Krieg" /></label>
+        <label>Kartentyp
+          <select id="create-map">
+            <option value="continents">Kontinente</option>
+            <option value="archipelago">Inseln</option>
+            <option value="valley">Tal</option>
+            <option value="desert">Wüste</option>
+            <option value="custom">Eigene Karte</option>
+          </select>
+        </label>
+        <label id="create-custom-wrap" hidden>Eigene Karte<select id="create-custom"></select></label>
+        <button id="btn-create" class="btn primary">Spiel erstellen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LOBBY ============ -->
+  <section id="screen-lobby" class="screen">
+    <header class="menu-header">
+      <h1 id="lobby-title" class="logo small">Lobby</h1>
+      <div class="row">
+        <button id="btn-admin-lobby" class="btn gold" hidden>👑 Admin</button>
+        <button id="btn-leave-lobby" class="btn ghost">Verlassen</button>
+      </div>
+    </header>
+    <div class="menu-grid">
+      <div class="card">
+        <h2>👥 Königreiche (<span id="lobby-count">0</span>/10)</h2>
+        <div id="lobby-players" class="player-list"></div>
+        <div id="lobby-host-box" class="host-box" hidden>
+          <h3>Spiel-Einstellungen</h3>
+          <label>Kartentyp
+            <select id="lobby-map">
+              <option value="continents">Kontinente</option>
+              <option value="archipelago">Inseln</option>
+              <option value="valley">Tal</option>
+              <option value="desert">Wüste</option>
+              <option value="custom">Eigene Karte</option>
+            </select>
+          </label>
+          <label id="lobby-custom-wrap" hidden>Eigene Karte<select id="lobby-custom"></select></label>
+          <label>Geschwindigkeit
+            <select id="lobby-speed">
+              <option value="1">1x</option><option value="2">2x</option><option value="5">5x</option><option value="10">10x</option>
+            </select>
+          </label>
+          <canvas id="lobby-preview" width="200" height="200" class="preview"></canvas>
+          <div class="row">
+            <button id="btn-reroll" class="btn">🎲 Neue Karte</button>
+            <button id="btn-start" class="btn primary">▶️ Spiel starten</button>
+          </div>
+        </div>
+        <p id="lobby-wait" class="muted">Warte, bis der Admin das Spiel startet…</p>
+      </div>
+      <div class="card">
+        <h2>🛡️ Dein Königreich</h2>
+        <label>Königreichsname<input id="my-kingdom" maxlength="24" /></label>
+        <label>Farbe<input id="my-color" type="color" /></label>
+        <div class="emblem-picker" id="emblem-picker"></div>
+        <button id="btn-save-kingdom" class="btn primary">Speichern</button>
+      </div>
+      <div class="card chat-card">
+        <h2>💬 Chat</h2>
+        <div id="lobby-chat-log" class="chat-log"></div>
+        <form id="lobby-chat-form" class="row">
+          <input id="lobby-chat-input" maxlength="200" placeholder="Nachricht…" />
+          <button class="btn">Senden</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SPIEL ============ -->
+  <section id="screen-game" class="screen">
+    <div id="global-banner" class="banner global" hidden></div>
+    <header class="hud">
+      <div class="res-bar">
+        <span class="res" title="Holz">🪵 <b id="res-wood">0</b></span>
+        <span class="res" title="Stein">🪨 <b id="res-stone">0</b></span>
+        <span class="res" title="Gold">💰 <b id="res-gold">0</b></span>
+        <span class="res" title="Rohnahrung">🌾 <b id="res-raw">0</b></span>
+        <span class="res" title="Brot">🍞 <b id="res-bread">0</b></span>
+        <span class="res" title="Einwohner / Platz">👥 <b id="res-pop">0</b></span>
+        <span class="res" title="Moral">😊 <b id="res-morale">0</b></span>
+        <span class="res" title="Gebiet">🗺️ <b id="res-territory">0%</b></span>
+        <span class="res" title="Zeitalter"><b id="res-age">-</b></span>
+        <span class="res" title="Jahreszeit / Tempo"><b id="res-season">-</b></span>
+      </div>
+      <div id="pvp-banner" class="banner pvp">…</div>
+      <div class="row hud-buttons">
+        <button id="btn-view" class="btn">🏘️ Dorf</button>
+        <button id="btn-admin" class="btn gold" hidden>👑 Admin</button>
+        <button id="btn-mute" class="btn ghost">🔊</button>
+        <button id="btn-leave-game" class="btn ghost">🚪</button>
+      </div>
+    </header>
+    <main class="game-main">
+      <div class="canvas-wrap" id="canvas-wrap">
+        <canvas id="game-canvas"></canvas>
+        <div class="zoom-ctrl">
+          <button id="btn-zoom-in" class="btn small">＋</button>
+          <button id="btn-zoom-out" class="btn small">－</button>
+          <button id="btn-center" class="btn small" title="Zur Hauptstadt">🏰</button>
+        </div>
+        <div id="mode-hint" class="mode-hint" hidden></div>
+        <div id="paused-overlay" class="paused" hidden>⏸️ Spiel pausiert</div>
+      </div>
+      <aside class="sidebar">
+        <nav class="tabs">
+          <button class="tab active" data-tab="info">ℹ️</button>
+          <button class="tab" data-tab="build">🔨</button>
+          <button class="tab" data-tab="army">⚔️</button>
+          <button class="tab" data-tab="diplo">🤝</button>
+          <button class="tab" data-tab="chat">💬<span id="chat-badge" class="badge" hidden>!</span></button>
+        </nav>
+        <div id="panel" class="panel"></div>
+        <div id="panel-chat" class="panel chat-panel" hidden>
+          <div id="chat-log" class="chat-log"></div>
+          <form id="chat-form" class="row">
+            <input id="chat-input" maxlength="200" placeholder="Nachricht an alle…" />
+            <button class="btn">➤</button>
+          </form>
+        </div>
+      </aside>
+    </main>
+  </section>
+
+  <!-- ============ MODALS ============ -->
+  <div id="modal-admin" class="modal" hidden>
+    <div class="modal-box wide">
+      <div class="modal-head"><h2>👑 Admin-Konsole</h2><button class="btn ghost" data-close="modal-admin">✖</button></div>
+      <div id="admin-body"></div>
+    </div>
+  </div>
+
+  <div id="modal-editor" class="modal" hidden>
+    <div class="modal-box wide">
+      <div class="modal-head"><h2>🗺️ Map-Editor (100×100)</h2><button class="btn ghost" data-close="modal-editor">✖</button></div>
+      <div class="editor-layout">
+        <canvas id="editor-canvas" width="600" height="600"></canvas>
+        <div class="editor-tools" id="editor-tools"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-end" class="modal" hidden>
+    <div class="modal-box">
+      <h2 id="end-title">🏆 Sieg!</h2>
+      <p id="end-text"></p>
+      <canvas id="replay-canvas" width="400" height="400" class="preview"></canvas>
+      <p id="replay-info" class="muted"></p>
+      <button id="btn-end-menu" class="btn primary">Zurück zum Menü</button>
+      <button class="btn ghost" data-close="modal-end">Karte ansehen</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>
