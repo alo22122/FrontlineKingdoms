@@ -57,7 +57,8 @@ create table if not exists public.matches (
     season         text not null default 'summer' check (season in ('summer','winter')),
     pvp_mode       text not null default 'school_schedule'
                    check (pvp_mode in ('school_schedule','always_war','peace')),
-    territory      text not null default '',  -- 10.000 Zeichen: '.' = neutral, 'A'..'J' = Spieler-Slot
+    territory      text not null default '',
+    naps           jsonb not null default '{}'::jsonb,
     global_banner  text not null default '',
     winner_id      uuid,
     created_at     timestamptz not null default now()
