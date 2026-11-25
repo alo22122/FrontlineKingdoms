@@ -172,6 +172,14 @@
         </div>
         <div id="mode-hint" class="mode-hint" hidden></div>
         <button id="btn-cancel-mode" class="btn small danger" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);z-index:5;" hidden>✖ Abbrechen</button>
+        <div id="tut-coach" class="tut-coach" hidden>
+          <h3 id="tut-title">📖 Tutorial</h3>
+          <p id="tut-text"></p>
+          <div class="row">
+            <button id="tut-next" class="btn small primary">Weiter ➔</button>
+            <button id="tut-skip" class="btn small ghost">Beenden</button>
+          </div>
+        </div>
         <div id="paused-overlay" class="paused" hidden>⏸️ Spiel pausiert</div>
       </div>
       <aside class="sidebar">
@@ -236,7 +244,10 @@
         <p><b>iPad / Touch:</b> Mit 1 Finger ziehen = Karte bewegen, mit 2 Fingern = Zoomen, Tippen = Auswählen/Marschieren.<br>
         <b>Schulzeit-PvP:</b> Mo/Mi/Do 08:00–15:30 &amp; Di/Fr 08:00–13:30 ist Kriegszeit. Danach herrscht Freizeit-Frieden (Bauen, Handeln &amp; Banditen angreifen geht immer!).</p>
       </div>
-      <button class="btn primary" data-close="modal-tutorial">Verstanden – Los geht's!</button>
+      <div class="row">
+        <button id="btn-start-tut" class="btn primary">▶️ Interaktives Tutorial im Spiel starten</button>
+        <button class="btn ghost" data-close="modal-tutorial">Schließen</button>
+      </div>
     </div>
   </div>
 
