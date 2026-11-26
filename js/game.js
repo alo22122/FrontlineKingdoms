@@ -1142,17 +1142,13 @@ function travelMs(unitType, x0, y0, x1, y1, playerId = S.me?.id) {
 
 function armyPos(a) {
   if (a.target_x != null && !a.arrives_at) {
-    return { x: a.x + (a.target_x - a.x) * 0.68, y: a.y + (a.target_y - a.y) * 0.68, moving: false, fighting: true };
+    return { x: a.x, y: a.y, moving: false, fighting: true };
   }
   if (a.target_x == null || !a.arrives_at) return { x: a.x, y: a.y, moving: false };
   const arr = new Date(a.arrives_at).getTime();
   const dur = Math.max(1, travelMs(a.unit_type, a.x, a.y, a.target_x, a.target_y, a.player_id));
   const t = clamp(1 - (arr - now()) / dur, 0, 1);
-  const tSlot = M.inBounds(a.target_x, a.target_y) ? S.territory[M.idx(a.target_x, a.target_y)] : -1;
-  const ownerP = tSlot >= 0 ? playerBySlot(tSlot) : null;
-  const isHostile = tSlot !== playerById(a.player_id)?.slot && (!ownerP || !allied(ownerP.id, a.player_id));
-  const maxFrac = isHostile ? 0.68 : 1;
-  return { x: a.x + (a.target_x - a.x) * (t * maxFrac), y: a.y + (a.target_y - a.y) * (t * maxFrac), moving: true };
+  return { x: a.x + (a.target_x - a.x) * t, y: a.y + (a.target_y - a.y) * t, moving: true };
 }
 
 async function moveArmy(a, tx, ty, clearSel = true) {
@@ -1198,6 +1194,19 @@ async function moveArmy(a, tx, ty, clearSel = true) {
   else delete S.armyRoutes[a.id];
 
   const curProv = S.provinces[startPid];
+  const isHostileNext = owner !== S.me.slot && (!ownerP || !allied(ownerP.id, S.me.id));
+  if (isHostileNext) {
+    // Direkt aus der eigenen Provinz angreifen (Armee bleibt stehen, Pfeil + Schlacht starten sofort!)
+    if (S.provHp[nextPid] == null) S.provHp[nextPid] = provDefense(nextPid);
+    a.x = curProv.cx; a.y = curProv.cy; a.target_x = nextProv.cx; a.target_y = nextProv.cy; a.arrives_at = null;
+    await sb.from('armies').update({ x: a.x, y: a.y, target_x: a.target_x, target_y: a.target_y, arrives_at: null }).eq('id', a.id);
+    addFx('boom', (curProv.cx + nextProv.cx) / 2, (curProv.cy + nextProv.cy) / 2, { dur: 800 });
+    playSfx('horn');
+    advanceTut('army_moved');
+    if (clearSel) { clearArmySelect(); updateModeHint(); renderPanel(); }
+    return;
+  }
+
   const arrives = new Date(now() + travelMs(a.unit_type, curProv.cx, curProv.cy, nextProv.cx, nextProv.cy)).toISOString();
   a.x = curProv.cx; a.y = curProv.cy; a.target_x = nextProv.cx; a.target_y = nextProv.cy; a.arrives_at = arrives;
   await sb.from('armies').update({ x: a.x, y: a.y, target_x: a.target_x, target_y: a.target_y, arrives_at: arrives }).eq('id', a.id);
