@@ -65,7 +65,7 @@ const S = {
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
   reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {},
-  armyRoutes: {}, provHp: {}, armyVis: {}
+  armyRoutes: {}, provHp: {}, armyVis: {}, autoRetreat: false, battleStartCount: {}, dmgAcc: {}
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -731,7 +731,10 @@ const popCap = () => 20 + 15 * countType('house');
 function provBuildings(pid) {
   const prov = S.provinces?.[pid];
   if (!prov) return [];
-  return S.buildings.filter((b) => b.type !== 'bridge' && b.x === prov.cx && b.y === prov.cy && isDone(b));
+  return S.buildings.filter((b) => b.type !== 'bridge' && S.provOf?.[M.idx(b.x, b.y)] === pid && isDone(b));
+}
+function provAllBuildings(pid) {
+  return S.buildings.filter((b) => b.type !== 'bridge' && S.provOf?.[M.idx(b.x, b.y)] === pid);
 }
 function provDefense(pid) {
   const prov = S.provinces?.[pid];
@@ -998,12 +1001,27 @@ async function buildInProvince(pid, type) {
   if (type === 'harbor' && !isCoastalProv(pid)) return toast('🚢 Ein Hafen braucht eine Küsten-Provinz!', 'err');
   const def = BUILDINGS[type];
   if (!def) return;
-  const curCnt = S.buildings.filter((b) => b.type === type && b.x === prov.cx && b.y === prov.cy).length;
+  const curCnt = provAllBuildings(pid).filter((b) => b.type === type).length;
   if (def.limit && curCnt >= def.limit) return toast(`Limit erreicht: Max. ${def.limit}× ${def.name} pro Provinz!`, 'err');
   if (!(await spend(def.cost))) return;
+
+  // Freies Land-Feld in der Nähe des Provinz-Zentrums (nicht direkt auf der Burg) wählen
+  const occupied = new Set(S.buildings.map((b) => M.idx(b.x, b.y)));
+  for (const pl of S.players) if (pl.capital_x != null) occupied.add(M.idx(pl.capital_x, pl.capital_y));
+  occupied.add(M.idx(prov.cx, prov.cy));
+  const cands = [];
+  for (const ti of prov.tiles) {
+    if (occupied.has(ti) || !M.isPassable(S.terrain[ti])) continue;
+    const tx = ti % M.W, ty = (ti - tx) / M.W;
+    const dist = Math.hypot(tx - prov.cx, ty - prov.cy);
+    if (dist >= 1.5) cands.push({ tx, ty, dist });
+  }
+  cands.sort((a, b) => a.dist - b.dist);
+  const spot = cands[0] || { tx: prov.cx, ty: prov.cy };
+
   const endAt = new Date(now() + ((def.buildTime || 6) * 1000) / speed()).toISOString();
   const { data, error } = await sb.from('buildings')
-    .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x: prov.cx, y: prov.cy, construction_end_at: endAt })
+    .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x: spot.tx, y: spot.ty, construction_end_at: endAt })
     .select().single();
   if (error) { await rpcAdd(S.me.id, def.cost, true); return toast(error.message, 'err'); }
   if (data) S.buildings.push(data);
@@ -1084,7 +1102,7 @@ async function trainUnits(type) {
 
 function travelMs(unitType, x0, y0, x1, y1) {
   const winterMult = S.match?.season === 'winter' ? 1.2 : 1;
-  return (Math.max(14, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.3) * 650 * winterMult) / speed();
+  return (Math.max(8, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.3) * 210 * winterMult) / speed();
 }
 
 function armyPos(a) {
@@ -1377,29 +1395,55 @@ async function runCombatTick(pvp) {
     const bx = (attackers[0].x + prov.cx) / 2, by = (attackers[0].y + prov.cy) / 2;
     addFx('boom', bx, by, { dur: 650 });
 
+    for (const a of attackers) {
+      if (S.battleStartCount[a.id] == null) S.battleStartCount[a.id] = a.count;
+    }
+    const pct = Math.round((attPow / Math.max(1, attPow + defPow)) * 100);
+
+    // Optionaler Automatischer Front-Rückzug (<20% Reststärke in roter Schlacht)
+    if (S.autoRetreat && pct < 45) {
+      for (const a of attackers) {
+        if (a.player_id === S.me?.id && a.count <= (S.battleStartCount[a.id] || a.count) * 0.2) {
+          delete S.armyRoutes[a.id]; delete S.battleStartCount[a.id];
+          await updateArmy(a, { target_x: null, target_y: null, arrives_at: null });
+          toast(`🏳️ Auto-Rückzug! Armee wich mit ${a.count} Mann zurück.`, 'ok');
+        }
+      }
+    }
+
     const totalAttCount = attackers.reduce((s, a) => s + a.count, 0);
-    const attLossTotal = Math.max(0, Math.round(totalAttCount * clamp((defPow / Math.max(1, attPow)) * 0.055, 0.015, 0.085)));
+    const attDmgRate = totalAttCount * clamp((defPow / Math.max(1, attPow)) * 0.065, 0.025, 0.095);
+    S.dmgAcc[`att_${tpid}`] = (S.dmgAcc[`att_${tpid}`] || 0) + attDmgRate;
+    const attLossTotal = Math.floor(S.dmgAcc[`att_${tpid}`]);
     if (attLossTotal > 0) {
+      S.dmgAcc[`att_${tpid}`] -= attLossTotal;
+      addFx('text', bx, by - 2, { label: `-${attLossTotal}`, color: '#ff8a80', dur: 850 });
       let remLoss = attLossTotal;
       for (const a of attackers) {
         if (remLoss <= 0) break;
         const take = Math.min(a.count, Math.max(1, Math.round((a.count / Math.max(1, totalAttCount)) * attLossTotal)));
         a.count -= take; remLoss -= take;
-        if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
+        if (a.count <= 0) { delete S.battleStartCount[a.id]; await deleteArmy(a); }
+        else await updateArmy(a, { count: a.count });
       }
     }
 
     if (defenders.length > 0) {
       const totalDefCount = defenders.reduce((s, d) => s + d.count, 0);
-      const defLossTotal = Math.max(1, Math.round(totalDefCount * clamp((attPow / Math.max(1, defPow)) * 0.065, 0.02, 0.095)));
-      addFx('text', prov.cx, prov.cy, { label: `-${defLossTotal}`, color: '#ff6b6b', dur: 850 });
-      for (const d of defenders) {
-        const take = Math.min(d.count, Math.max(1, Math.round((d.count / Math.max(1, totalDefCount)) * defLossTotal)));
-        d.count -= take;
-        if (d.count <= 0) await deleteArmy(d); else await updateArmy(d, { count: d.count });
+      const defDmgRate = totalDefCount * clamp((attPow / Math.max(1, defPow)) * 0.075, 0.03, 0.11);
+      S.dmgAcc[`def_${tpid}`] = (S.dmgAcc[`def_${tpid}`] || 0) + defDmgRate;
+      const defLossTotal = Math.floor(S.dmgAcc[`def_${tpid}`]);
+      if (defLossTotal > 0) {
+        S.dmgAcc[`def_${tpid}`] -= defLossTotal;
+        addFx('text', prov.cx, prov.cy, { label: `-${defLossTotal}`, color: '#ff5252', dur: 850 });
+        for (const d of defenders) {
+          const take = Math.min(d.count, Math.max(1, Math.round((d.count / Math.max(1, totalDefCount)) * defLossTotal)));
+          d.count -= take;
+          if (d.count <= 0) await deleteArmy(d); else await updateArmy(d, { count: d.count });
+        }
       }
     } else {
-      const wallDmg = Math.max(6, Math.round((attPow / Math.max(25, defPow)) * (hasCatapult ? 24 : 11)));
+      const wallDmg = Math.max(6, Math.round((attPow / Math.max(25, defPow)) * (hasCatapult ? 22 : 10)));
       S.provHp[tpid] = Math.max(0, S.provHp[tpid] - wallDmg);
       addFx('text', prov.cx, prov.cy, { label: `🛡️-${wallDmg}`, color: '#ffd23f', dur: 850 });
     }
@@ -1407,14 +1451,15 @@ async function runCombatTick(pvp) {
     const aliveAtt = attackers.filter((a) => a.count > 0 && S.armies.includes(a));
     const aliveDef = defenders.filter((d) => d.count > 0 && S.armies.includes(d));
     if (aliveAtt.length > 0 && aliveDef.length === 0 && (S.provHp[tpid] || 0) <= 0) {
-      delete S.provHp[tpid];
+      delete S.provHp[tpid]; delete S.dmgAcc[`att_${tpid}`]; delete S.dmgAcc[`def_${tpid}`];
       for (const a of aliveAtt) {
+        delete S.battleStartCount[a.id];
         S.armyRanks[a.id] = (S.armyRanks[a.id] || 0) + 1;
         await updateArmy(a, { x: prov.cx, y: prov.cy, target_x: null, target_y: null, arrives_at: null });
       }
       await conquer(prov.cx, prov.cy, mainAtt, pvp);
     } else if (aliveAtt.length === 0) {
-      delete S.provHp[tpid];
+      delete S.provHp[tpid]; delete S.dmgAcc[`att_${tpid}`]; delete S.dmgAcc[`def_${tpid}`];
     }
   }
 }
@@ -1717,31 +1762,23 @@ function render() {
     }
   }
 
-  // Provinz-Gebäude (Control Europe: alle Gebäude einer Provinz am Provinz-Zentrum)
-  const groupedBlds = new Map();
+  // Provinz-Gebäude (verteilt auf den Land-Feldern rund um die Burg/Provinz-Mitte)
   for (const b of S.buildings) {
     if (b.type === 'bridge') continue;
-    const key = `${b.x}_${b.y}_${b.type}`;
-    if (!groupedBlds.has(key)) groupedBlds.set(key, { ...b, cnt: 1, allDone: isDone(b) });
-    else { const g = groupedBlds.get(key); g.cnt++; if (isDone(b)) g.allDone = true; }
-  }
-  const slotCounters = new Map();
-  for (const g of groupedBlds.values()) {
-    const i = M.idx(g.x, g.y);
-    if (!S.explored[i] && !S.fogOff && g.player_id !== S.me.id) continue;
-    const owner = playerById(g.player_id);
-    const posKey = `${g.x}_${g.y}`;
-    const idxInProv = slotCounters.get(posKey) || 0;
-    slotCounters.set(posKey, idxInProv + 1);
-    const ox = (idxInProv % 3 - 1) * 10, oy = Math.floor(idxInProv / 3) * 10 - 4;
-    const bx = g.x * TILE + ox, by = g.y * TILE + oy;
-    ctx.globalAlpha = g.allDone ? 1 : 0.55;
-    ctx.drawImage(getBuildingSprite(g.type, owner ? owner.color : '#888'), bx, by, 12, 12);
+    const i = M.idx(b.x, b.y);
+    if (!S.explored[i] && !S.fogOff && b.player_id !== S.me.id) continue;
+    const owner = playerById(b.player_id);
+    const done = isDone(b);
+    const bSize = Math.max(TILE, Math.min(28, 16 / z));
+    const bx = b.x * TILE + (TILE - bSize) / 2, by = b.y * TILE + (TILE - bSize) / 2;
+    ctx.globalAlpha = done ? 1 : 0.6;
+    ctx.drawImage(getBuildingSprite(b.type, owner ? owner.color : '#888'), bx, by, bSize, bSize);
     ctx.globalAlpha = 1;
-    if (g.cnt > 1) {
-      ctx.fillStyle = '#000c'; ctx.fillRect(bx + 6, by + 6, 8, 7);
-      ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(String(g.cnt), bx + 10, by + 12);
+    if (!done) {
+      const total = ((BUILDINGS[b.type]?.buildTime || 8) * 1000) / speed();
+      const prog = clamp(1 - (new Date(b.construction_end_at).getTime() - now()) / total, 0, 1);
+      ctx.fillStyle = '#000a'; ctx.fillRect(bx, by + bSize - 2, bSize, 2);
+      ctx.fillStyle = '#e8b64c'; ctx.fillRect(bx, by + bSize - 2, bSize * prog, 2);
     }
   }
 
@@ -1879,7 +1916,10 @@ function render() {
       defCount: defs.reduce((s, d) => s + d.count, 0),
       attKing, defKing, maxRank, hasCatapult
     });
-    // Kampf-Blase
+    // Kampf-Blase + animierter Kampf-Puls
+    const pulse = 1 + 0.15 * Math.sin(tNow / 140);
+    ctx.strokeStyle = 'rgba(255, 210, 63, 0.45)'; ctx.lineWidth = Math.max(1.5, 2.2 / z);
+    ctx.beginPath(); ctx.arc(bx, by, bRad * 1.25 * pulse, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
     ctx.beginPath(); ctx.arc(bx, by, bRad, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = S.selectedBattlePid === tpid ? '#ffd23f' : '#fff';
@@ -2376,7 +2416,7 @@ function panelBuild(el) {
 
   if (prov) {
     const blds = provBuildings(pid);
-    const pending = S.buildings.filter((b) => b.x === prov.cx && b.y === prov.cy && !isDone(b));
+    const pending = provAllBuildings(pid).filter((b) => !isDone(b));
     const counts = {};
     for (const b of blds) counts[b.type] = (counts[b.type] || 0) + 1;
     const pbox = h(`<div class="info-box" style="border-left:4px solid ${me.color}">
@@ -2396,7 +2436,7 @@ function panelBuild(el) {
     const grid = document.createElement('div'); grid.className = 'grid2';
     for (const [type, def] of Object.entries(BUILDINGS)) {
       if (type === 'harbor' && !isCoastalProv(pid)) continue;
-      const allCnt = S.buildings.filter((b) => b.type === type && b.x === prov.cx && b.y === prov.cy).length;
+      const allCnt = provAllBuildings(pid).filter((b) => b.type === type).length;
       const atLimit = def.limit && allCnt >= def.limit;
       const afford = (me.gold || 0) >= (def.cost.gold || 0);
       const b = document.createElement('button');
@@ -2452,6 +2492,12 @@ function panelArmy(el) {
     toast(S.frontPush ? '⚔️ HOI4-Angriff gestartet! Frontlinie rückt Provinz-zu-Provinz vor.' : '⏸️ Front-Angriff pausiert.', 'ok');
     renderPanel();
   }, `btn small${S.frontPush ? ' danger' : ' gold'}`));
+  el.appendChild(btn(S.autoRetreat ? '🏳️ Auto-Rückzug (<20%): AN' : '🏳️ Auto-Rückzug (<20%): AUS', () => {
+    S.autoRetreat = !S.autoRetreat;
+    playSfx('click');
+    toast(S.autoRetreat ? '🏳️ Automatischer Rückzug unter 20% aktiviert!' : 'Auto-Rückzug deaktiviert.', 'ok');
+    renderPanel();
+  }, `btn small${S.autoRetreat ? ' primary' : ''}`));
   el.appendChild(btn('✈️ Aufklärung 30s (35💰)', async () => {
     if (!(await spend({ gold: 35 }))) return;
     S.reconUntil = now() + 30000;
