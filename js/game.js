@@ -65,7 +65,7 @@ const S = {
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
   reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {},
-  armyRoutes: {}, provHp: {}, armyVis: {}, autoRetreat: false, battleStartCount: {}, dmgAcc: {}
+  armyRoutes: {}, provHp: {}, armyVis: {}, autoRetreat: false, battleStartCount: {}, dmgAcc: {}, techQueue: null
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -771,14 +771,15 @@ function isCoastalProv(pid) {
 }
 
 const TECHS = {
-  atk:      { name: '⚔️ Scharfe Klingen',  max: 5, baseCost: 120, step: 90,  desc: '+10% Angriffskraft pro Stufe für alle Truppen.' },
-  def:      { name: '🛡️ Eisenrüstung',     max: 5, baseCost: 120, step: 90,  desc: '+10% Verteidigung pro Stufe in eigenen Provinzen.' },
-  eco:      { name: '💰 Steuerrecht',      max: 4, baseCost: 140, step: 110, desc: '+15% Gold-Einkommen pro Stufe.' },
-  archer:   { name: '🏹 Bogenschießen',    max: 1, baseCost: 150, step: 0,   desc: 'Schaltet Bogenschützen frei.' },
-  knight:   { name: '🐎 Rittertum',        max: 1, baseCost: 300, step: 0,   desc: 'Schaltet Ritter frei.' },
-  naval:    { name: '⛵ Schiffsbau',       max: 1, baseCost: 220, step: 0,   desc: 'Schaltet Schiffe & Kriegsschiffe frei.' },
-  catapult: { name: '💣 Belagerungskunst', max: 1, baseCost: 420, step: 0,   desc: 'Schaltet Katapulte frei (2.5× gegen Festungen).' },
-  spy:      { name: '🕵️ Spionagenetz',     max: 1, baseCost: 180, step: 0,   desc: 'Schaltet Spione frei.' }
+  atk:       { name: '⚔️ Scharfe Klingen',  max: 5, baseCost: 120, step: 90,  time: 18, desc: '+10% Angriffskraft pro Stufe für alle Truppen.' },
+  def:       { name: '🛡️ Eisenrüstung',     max: 5, baseCost: 120, step: 90,  time: 18, desc: '+10% Verteidigung pro Stufe in eigenen Provinzen.' },
+  eco:       { name: '💰 Steuerrecht',      max: 4, baseCost: 140, step: 110, time: 20, desc: '+15% Gold-Einkommen pro Stufe.' },
+  logistics: { name: '👟 Schnelle Stiefel', max: 4, baseCost: 130, step: 95,  time: 16, desc: '+15% Marschgeschwindigkeit pro Stufe für Landarmeen.' },
+  archer:    { name: '🏹 Bogenschießen',    max: 1, baseCost: 150, step: 0,   time: 15, desc: 'Schaltet Bogenschützen frei.' },
+  knight:    { name: '🐎 Rittertum',        max: 1, baseCost: 300, step: 0,   time: 25, desc: 'Schaltet Ritter frei.' },
+  naval:     { name: '⛵ Schiffsbau',       max: 1, baseCost: 220, step: 0,   time: 20, desc: 'Schaltet Schiffe & Kriegsschiffe frei.' },
+  catapult:  { name: '💣 Belagerungskunst', max: 1, baseCost: 420, step: 0,   time: 30, desc: 'Schaltet Katapulte frei (2.5× gegen Festungen).' },
+  spy:       { name: '🕵️ Spionagenetz',     max: 1, baseCost: 180, step: 0,   time: 18, desc: 'Schaltet Spione frei.' }
 };
 const UNIT_TECH = { archer: 'archer', knight: 'knight', ship: 'naval', warship: 'naval', catapult: 'catapult', spy: 'spy' };
 
@@ -956,6 +957,7 @@ async function clientTick() {
   const me = S.me;
   if (!me || !S.match || S.match.status !== 'running' || me.is_eliminated) return;
   await processTrainQueue();
+  await processTechQueue();
   computeSupply();
   for (const a of S.armies) {
     if (a.player_id === me.id && a.target_x == null) S.entrench[a.id] = Math.min(15, (S.entrench[a.id] || 0) + 1);
@@ -1130,9 +1132,12 @@ async function trainUnits(type) {
   renderPanel();
 }
 
-function travelMs(unitType, x0, y0, x1, y1) {
+function travelMs(unitType, x0, y0, x1, y1, playerId = S.me?.id) {
   const winterMult = S.match?.season === 'winter' ? 1.2 : 1;
-  return (Math.max(8, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.3) * 210 * winterMult) / speed();
+  const isBoat = unitType === 'ship' || unitType === 'warship';
+  const p = playerId ? playerById(playerId) : null;
+  const logMult = !isBoat && p ? 1 + (getPlayerTech(p).logistics || 0) * 0.15 : 1;
+  return (Math.max(8, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.3) * 210 * winterMult) / (speed() * logMult);
 }
 
 function armyPos(a) {
@@ -1141,7 +1146,7 @@ function armyPos(a) {
   }
   if (a.target_x == null || !a.arrives_at) return { x: a.x, y: a.y, moving: false };
   const arr = new Date(a.arrives_at).getTime();
-  const dur = Math.max(1, travelMs(a.unit_type, a.x, a.y, a.target_x, a.target_y));
+  const dur = Math.max(1, travelMs(a.unit_type, a.x, a.y, a.target_x, a.target_y, a.player_id));
   const t = clamp(1 - (arr - now()) / dur, 0, 1);
   const tSlot = M.inBounds(a.target_x, a.target_y) ? S.territory[M.idx(a.target_x, a.target_y)] : -1;
   const ownerP = tSlot >= 0 ? playerBySlot(tSlot) : null;
@@ -2462,6 +2467,15 @@ function panelBuild(el) {
     pRow.appendChild(btn('🛡️ +50 Def (40💰)', () => reinforceProvince(pid), 'btn small gold'));
     pRow.appendChild(btn('✏️ Umbenennen', () => renameProvince(pid), 'btn small'));
     pbox.firstChild.appendChild(pRow);
+    if (blds.length > 0) {
+      const dRow = document.createElement('div'); dRow.className = 'row'; dRow.style.marginTop = '6px'; dRow.style.flexWrap = 'wrap';
+      for (const b of blds) {
+        dRow.appendChild(btn(`🪓 ${BUILDINGS[b.type]?.name || b.type}`, () => {
+          if (confirm(`${BUILDINGS[b.type]?.name || b.type} abreißen? (+50% Gold zurück)`)) demolishBuilding(b);
+        }, 'btn small danger'));
+      }
+      pbox.firstChild.appendChild(dRow);
+    }
     el.appendChild(pbox);
 
     el.appendChild(h(`<h3>🔨 In „${esc(provName(prov))}“ bauen</h3><p class="muted">Tippe eine andere Provinz auf der Karte an, um sie auszubauen.</p>`));
@@ -2494,34 +2508,55 @@ function panelBuild(el) {
   el.appendChild(capBox);
 }
 
-async function researchTech(key) {
-  if (!S.me || !S.match) return;
+async function processTechQueue() {
+  if (!S.me || !S.match || !S.techQueue) return;
+  if (now() < S.techQueue.readyAt) return;
+  const { key } = S.techQueue;
+  S.techQueue = null;
   const def = TECHS[key];
   const cur = getPlayerTech(S.me)[key] || 0;
-  if (!def || cur >= def.max) return;
-  const cost = def.baseCost + cur * def.step;
-  if (!(await spend({ gold: cost }))) return;
   const t = { ...getPlayerTech(S.me), [key]: cur + 1 };
   const guards = { ...(S.match.prov_guards || {}), ['tech_' + S.me.id]: t };
   S.match.prov_guards = guards;
   await sb.from('matches').update({ prov_guards: guards }).eq('id', S.match.id);
   playSfx('horn');
-  toast(`🔬 ${def.name} (Stufe ${cur + 1}/${def.max}) erforscht!`, 'ok');
+  toast(`🔬 ${def?.name || key} (Stufe ${cur + 1}) erforscht!`, 'ok');
+  renderPanel();
+}
+
+async function researchTech(key) {
+  if (!S.me || !S.match) return;
+  if (S.techQueue) return toast('Es läuft bereits eine Forschung!', 'err');
+  const def = TECHS[key];
+  const cur = getPlayerTech(S.me)[key] || 0;
+  if (!def || cur >= def.max) return;
+  const cost = def.baseCost + cur * def.step;
+  if (!(await spend({ gold: cost }))) return;
+  const ms = ((def.time || 20) * 1000) / speed();
+  S.techQueue = { key, readyAt: now() + ms, totalMs: ms };
+  playSfx('click');
+  toast(`⏳ Erforsche ${def.name} (${Math.ceil(ms / 1000)}s)…`, 'ok');
   renderPanel();
 }
 
 function panelTech(el) {
   const me = S.me, t = getPlayerTech(me);
-  el.appendChild(h(`<div class="info-box"><h3>🔬 Technologie-Forschung</h3><p class="muted">Erforsche stärkere Waffen, Rüstungen, mehr Steuern und neue Truppentypen mit 💰 Gold!</p></div>`));
+  el.appendChild(h(`<div class="info-box"><h3>🔬 Technologie-Forschung</h3><p class="muted">Erforsche stärkere Waffen, Rüstungen, schnellere Märsche und neue Truppentypen mit 💰 Gold!</p></div>`));
+  if (S.techQueue) {
+    const q = S.techQueue, def = TECHS[q.key];
+    const left = Math.max(0, Math.ceil((q.readyAt - now()) / 1000));
+    const pct = clamp(100 - ((q.readyAt - now()) / q.totalMs) * 100, 0, 100);
+    el.appendChild(h(`<div class="info-box"><h3>⏳ Aktive Forschung</h3><div class="stat"><span>${def?.name || q.key}</span><b>${left}s</b></div><div class="bar"><i style="width:${pct}%"></i></div></div>`));
+  }
   for (const [key, def] of Object.entries(TECHS)) {
     const cur = t[key] || 0;
     const done = cur >= def.max;
     const cost = def.baseCost + cur * def.step;
     const box = document.createElement('div');
     box.className = 'info-box';
-    box.innerHTML = `<div class="stat"><b>${def.name}</b><b>${done ? '✅ Max' : `St. ${cur}/${def.max}`}</b></div><p class="muted">${def.desc}</p>`;
+    box.innerHTML = `<div class="stat"><b>${def.name}</b><b>${done ? '✅ Max' : `St. ${cur}/${def.max} · ⏳${Math.ceil((def.time || 20) / speed())}s`}</b></div><p class="muted">${def.desc}</p>`;
     if (!done) {
-      box.appendChild(btn(`🔬 Erforschen (${cost}💰)`, () => researchTech(key), 'btn small primary', (me.gold || 0) < cost));
+      box.appendChild(btn(`🔬 Erforschen (${cost}💰)`, () => researchTech(key), 'btn small primary', Boolean(S.techQueue) || (me.gold || 0) < cost));
     }
     el.appendChild(box);
   }
@@ -2691,7 +2726,10 @@ function panelDiplo(el) {
     const box = document.createElement('div'); box.className = 'info-box'; box.style.borderLeft = `5px solid ${p.color}`;
     const head = document.createElement('div'); head.className = 'row';
     head.appendChild(emblemCanvas(p.emblem, p.color, 24, p.flag_pattern || 'solid', p.shield_frame || 'gold'));
-    head.appendChild(h(`<div><b>${esc(p.kingdom_name)}</b>${isMe ? ' (Du)' : ''}${ally ? ' 🤝' : ''}${p.is_eliminated ? ' ☠️' : ''}<br><span class="muted">${AGE_NAMES[p.age]} · 🗺️ ${(p.territory_percent || 0).toFixed(1)}%${lord ? ' · 👑 Vasall von ' + esc(lord.kingdom_name) : ''}${p.alliance ? ' · „' + esc(p.alliance) + '“' : ''}</span></div>`));
+    const spiedTechs = (S.spied[p.id] || 0) > now()
+      ? `<br><span class="muted">🕵️ Techs: ${Object.entries(getPlayerTech(p)).filter(([,v]) => v > 0).map(([k,v]) => `${TECHS[k]?.name?.split(' ')[0] || k} St.${v}`).join(', ') || 'Keine'}</span>`
+      : '';
+    head.appendChild(h(`<div><b>${esc(p.kingdom_name)}</b>${isMe ? ' (Du)' : ''}${ally ? ' 🤝' : ''}${p.is_eliminated ? ' ☠️' : ''}<br><span class="muted">🗺️ ${(p.territory_percent || 0).toFixed(1)}%${lord ? ' · 👑 Vasall von ' + esc(lord.kingdom_name) : ''}${p.alliance ? ' · „' + esc(p.alliance) + '“' : ''}</span>${spiedTechs}</div>`));
     box.appendChild(head);
     if (!isMe && !p.is_eliminated) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginTop = '6px';
