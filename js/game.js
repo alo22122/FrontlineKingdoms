@@ -17,38 +17,31 @@ const PLAYER_COLORS = ['#e63946', '#457b9d', '#2a9d8f', '#e9c46a', '#9b5de5', '#
 const EMBLEMS = { crown: 'Krone', lion: 'Löwe', dragon: 'Drache', sword: 'Schwert' };
 const AGE_NAMES = ['', 'Dunkles Zeitalter', 'Feudalzeit', 'Ritterzeit', 'Kaiserzeit'];
 const AGE_COST = {
-  2: { wood: 200, raw_food: 200, gold: 100 },
-  3: { wood: 350, raw_food: 350, gold: 250 },
-  4: { wood: 500, raw_food: 500, gold: 500 }
+  2: { gold: 250 },
+  3: { gold: 550 },
+  4: { gold: 1000 }
 };
-const RES_ICON = { wood: '🪵', gold: '💰', raw_food: '🌾' };
-const RES_NAME = { wood: 'Holz', gold: 'Gold', raw_food: 'Nahrung' };
+const RES_ICON = { gold: '💰' };
+const RES_NAME = { gold: 'Gold' };
 
-// Alle Gebäude werden direkt auf der Weltkarte gebaut
+// Control-Europe-Stil: Jede Provinz kann direkt ausgebaut werden (einzige Währung: Gold)
 const BUILDINGS = {
-  house:      { name: 'Haus',       cost: { wood: 25 },           buildTime: 8,  desc: '+5 Einwohner-Limit (mehr Truppen & Produktion).' },
-  farm:       { name: 'Bauernhof',  cost: { wood: 30 },           buildTime: 10, prod: { raw_food: 2.0 }, desc: 'Produziert 🌾 Nahrung für Truppen.' },
-  lumberjack: { name: 'Holzfäller', cost: { wood: 20 },           buildTime: 8,  prod: { wood: 2.0 },     desc: 'Produziert 🪵 Holz für Gebäude & Schiffe.' },
-  goldmine:   { name: 'Goldmine',   cost: { wood: 40 },           buildTime: 12, prod: { gold: 1.5 },     desc: 'Produziert 💰 Gold (2× auf Gold-Feldern).' },
-  barracks:   { name: 'Kaserne',    cost: { wood: 50, gold: 20 }, buildTime: 15, desc: 'Ermöglicht Truppen auszubilden.' },
-  tower:      { name: 'Wachturm',   cost: { wood: 40, gold: 20 }, buildTime: 10, desc: 'Deckt Sicht auf & +15% Verteidigung.' },
-  fort:       { name: 'Festung',    cost: { wood: 60, gold: 40 }, buildTime: 18, desc: '+30% Verteidigung & starke Provinz-Garnison.' },
-  wall:       { name: 'Mauer',      cost: { wood: 10 },           buildTime: 5,  desc: '+25 Garnison-Schutz in der Provinz.' },
-  blacksmith: { name: 'Schmiede',   cost: { wood: 45, gold: 30 }, buildTime: 14, desc: '+10% Angriffskraft für alle Truppen (max +50%).' },
-  market:     { name: 'Marktplatz', cost: { wood: 50, gold: 25 }, buildTime: 14, desc: 'Tausche Holz/Nahrung gegen Gold im Diplo-Tab.' },
-  harbor:     { name: 'Hafen',      cost: { wood: 45, gold: 20 }, buildTime: 14, desc: 'An der Küste bauen! Seehandel-Gold steigt mit Entfernung.' },
-  caravan:    { name: 'Karawane',   cost: { wood: 40, gold: 25 }, buildTime: 12, desc: 'Landhandel! Gold steigt mit Entfernung zu Verbündeten.' }
+  house:    { name: 'Haus',       cost: { gold: 30 }, buildTime: 6,  desc: '+15 Arbeitskraft-Limit (für neue Truppen).' },
+  market:   { name: 'Marktplatz', cost: { gold: 40 }, buildTime: 8,  desc: '+2.5 💰 Gold/Sek. in dieser Provinz (2× auf Gold-Land).' },
+  fort:     { name: 'Festung',    cost: { gold: 50 }, buildTime: 10, desc: '+60 Provinz-Verteidigung & +25% Kampfbonus.' },
+  barracks: { name: 'Kaserne',    cost: { gold: 45 }, buildTime: 8,  desc: 'Ermöglicht Truppen-Rekrutierung in dieser Provinz.' },
+  harbor:   { name: 'Hafen',      cost: { gold: 55 }, buildTime: 10, desc: 'Nur Küste: +3.5 💰 Gold/Sek. & Schiffe bauen.' }
 };
 
 const UNITS = {
-  swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.5, trainTime: 8,  cost: { gold: 8, raw_food: 15 } },
-  archer:    { name: 'Bogenschütze',   age: 2, power: 9,  speed: 1.5, trainTime: 10, cost: { wood: 15, gold: 10 }, note: '+50% auf Hügeln' },
-  ship:      { name: 'Schiff',         age: 2, power: 6,  speed: 1.0, trainTime: 14, cost: { wood: 40 }, note: 'Startet im Hafen' },
-  warship:   { name: 'Kriegsschiff',   age: 3, power: 26, speed: 1.1, trainTime: 18, cost: { wood: 70, gold: 45 }, note: 'Beschießt Küsten (3 Tiles)' },
-  spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.8, trainTime: 10, cost: { gold: 25 }, note: 'Späht Gegner & Karte aus' },
-  knight:    { name: 'Ritter',         age: 3, power: 24, speed: 1.0, trainTime: 16, cost: { gold: 30, raw_food: 20 } },
-  catapult:  { name: 'Katapult',       age: 4, power: 40, speed: 2.5, trainTime: 20, cost: { wood: 60, gold: 30 } },
-  king:      { name: 'König',          age: 9, power: 35, speed: 1.3, trainTime: 0,  cost: {}, note: '+25% Kraft im Umkreis' }
+  swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.4, trainTime: 6,  cost: { gold: 6 } },
+  archer:    { name: 'Bogenschütze',   age: 2, power: 12, speed: 1.4, trainTime: 8,  cost: { gold: 9 }, note: '+50% auf Hügeln' },
+  ship:      { name: 'Schiff',         age: 2, power: 8,  speed: 1.0, trainTime: 10, cost: { gold: 14 }, note: 'Startet im Hafen' },
+  warship:   { name: 'Kriegsschiff',   age: 3, power: 26, speed: 1.1, trainTime: 14, cost: { gold: 28 }, note: 'Stark auf See' },
+  spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.8, trainTime: 8,  cost: { gold: 10 }, note: 'Späht Gegner aus' },
+  knight:    { name: 'Ritter',         age: 3, power: 24, speed: 1.0, trainTime: 12, cost: { gold: 18 } },
+  catapult:  { name: 'Katapult',       age: 4, power: 38, speed: 2.0, trainTime: 16, cost: { gold: 26 }, note: 'Schwächt Festungen' },
+  king:      { name: 'König',          age: 9, power: 35, speed: 1.2, trainTime: 0,  cost: {}, note: '+25% Kraft im Umkreis' }
 };
 const BATCH = 5;
 
@@ -63,15 +56,16 @@ const S = {
   visible: new Uint8Array(M.N), explored: new Uint8Array(M.N), exploredDirty: false, fogVersion: 0, fogBuilt: -1,
   bridges: new Set(), terrCanvas: null, fogCanvas: null,
   camW: { x: 0, y: 0, z: 1.5 },
-  selectedArmyId: null, selectedTile: null, buildType: null, bridgeMode: false, hoverTile: null,
+  selectedArmyId: null, selectedTile: null, selectedProvId: -1, buildType: null, bridgeMode: false, hoverTile: null,
   online: [], spied: {}, fogOff: false, unsub: null, timers: [], menuTimer: null, inGame: false,
-  acc: { wood: 0, gold: 0, raw_food: 0 }, popAcc: 0,
+  acc: { gold: 0 }, popAcc: 0,
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastExploredSave: 0,
   authBusy: false, endShown: false, activeTab: 'build', drag: null,
   lobbyFormFilled: false, myEmblem: 'crown', rafRunning: false, tutStep: -1,
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
-  reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {}
+  reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {},
+  armyRoutes: {}, provHp: {}
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -611,8 +605,8 @@ async function startMatch() {
       }
     }
     await sb.from('match_players').update({
-      capital_x: cx, capital_y: cy, wood: 200, stone: 100, gold: 120, raw_food: 200, bread: 0,
-      morale: 85, population: 5, age: 1, is_eliminated: false, territory_percent: 0
+      capital_x: cx, capital_y: cy, wood: 0, stone: 0, gold: 250, raw_food: 0, bread: 0,
+      morale: 85, population: 20, age: 1, is_eliminated: false, territory_percent: 0
     }).eq('id', p.id);
     armyRows.push(
       { match_id: S.match.id, player_id: p.id, unit_type: 'swordsman', count: 10, x: cx, y: cy },
@@ -685,15 +679,11 @@ function resizeCanvas() {
 function updateModeHint() {
   const el = $('mode-hint'), bar = $('build-confirm-bar'), cbtn = $('btn-confirm-build');
   let txt = '';
-  if (S.buildType) txt = `🔨 ${BUILDINGS[S.buildType].name}: Felder antippen, dann bestätigen`;
-  else if (S.bridgeMode) txt = '🌉 Brücke: Wasser-Felder antippen, dann bestätigen';
-  else if (S.selectedArmyId) txt = '⚔️ Ziel-Provinz antippen, um die Armee zu schicken';
+  if (S.frontlineMode) txt = '🏹 Angriffsziel-Provinz auf der Karte antippen';
+  else if (S.selectedArmyId) txt = '⚔️ Ziel-Provinz antippen (Armeen bewegen sich Provinz-zu-Provinz)';
   el.textContent = txt; el.hidden = !txt;
-  if (bar) bar.hidden = !txt && S.pendingBuilds.length === 0;
-  if (cbtn) {
-    cbtn.hidden = S.pendingBuilds.length === 0;
-    cbtn.textContent = `✅ Bauen bestätigen (${S.pendingBuilds.length})`;
-  }
+  if (bar) bar.hidden = true;
+  if (cbtn) cbtn.hidden = true;
 }
 
 function updateBanners() {
@@ -707,59 +697,73 @@ function updateBanners() {
 function updateHud() {
   const me = S.me;
   if (!me || !S.match) return;
-  $('res-wood').textContent = fmt(me.wood);
-  $('res-gold').textContent = fmt(me.gold);
-  $('res-raw').textContent = fmt(me.raw_food);
-  $('res-pop').textContent = `${me.population}/${popCap()}`;
+  const { d } = estimateRates();
+  $('res-gold').textContent = `${fmt(me.gold)} (+${d.gold.toFixed(1)}/s)`;
+  $('res-pop').textContent = `${fmt(me.population)}/${popCap()}`;
   $('res-territory').textContent = `${(me.territory_percent || 0).toFixed(1)}%`;
   $('res-age').textContent = `🏛️ ${AGE_NAMES[me.age]}`;
   $('res-season').textContent = `${S.match.season === 'winter' ? '❄️ Winter' : '☀️ Sommer'} · ${speed()}x`;
 }
 
 // ---------------------------------------------------------------------------
-// EINFACHE WIRTSCHAFT (direkt auf der Weltkarte)
+// CONTROL-EUROPA WIRTSCHAFT (Einzige Währung: Gold + Arbeitskraft aus Häusern)
 // ---------------------------------------------------------------------------
 const myBuildings = () => (S.me ? S.buildings.filter((b) => b.player_id === S.me.id) : []);
 const countType = (type, p = S.me) => (p ? S.buildings.filter((b) => b.player_id === p.id && b.type === type && isDone(b)).length : 0);
-const popCap = () => 5 + 5 * countType('house');
+const popCap = () => 20 + 15 * countType('house');
+
+function provBuildings(pid) {
+  const prov = S.provinces?.[pid];
+  if (!prov) return [];
+  return S.buildings.filter((b) => b.type !== 'bridge' && b.x === prov.cx && b.y === prov.cy && isDone(b));
+}
+function provDefense(pid) {
+  const prov = S.provinces?.[pid];
+  if (!prov) return 60;
+  const ownerSlot = S.territory[M.idx(prov.cx, prov.cy)];
+  const ownerP = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
+  if (!ownerP) {
+    const t = S.terrain[M.idx(prov.cx, prov.cy)];
+    return t === M.T.GOLD ? 90 : (t === M.T.HILL || t === M.T.FOREST) ? 75 : 60;
+  }
+  const blds = provBuildings(pid);
+  const forts = blds.filter((b) => b.type === 'fort').length;
+  const guardBonus = S.match?.prov_guards?.[pid] || 0;
+  const isCap = ownerP.capital_x === prov.cx && ownerP.capital_y === prov.cy;
+  const capBonus = isCap ? ((ownerP.capital_level || 1) * 50) : 0;
+  return 90 + forts * 60 + guardBonus + capBonus;
+}
+function provGoldRate(pid) {
+  const prov = S.provinces?.[pid];
+  if (!prov || prov.isSea) return 0;
+  const blds = provBuildings(pid);
+  const isGoldTile = S.terrain && S.terrain[M.idx(prov.cx, prov.cy)] === M.T.GOLD;
+  let g = 0.4 + (prov.goldBonus ? 0.5 : 0);
+  for (const b of blds) {
+    if (b.type === 'market') g += isGoldTile ? 5.0 : 2.5;
+    if (b.type === 'harbor') g += 3.5;
+  }
+  return g;
+}
+function isCoastalProv(pid) {
+  const prov = S.provinces?.[pid];
+  if (!prov || prov.isSea) return false;
+  return prov.adj.some((nid) => S.provinces[nid]?.isSea);
+}
 
 function estimateRates() {
   const me = S.me;
-  if (!me) return { d: { wood: 0.6, gold: 0.3, raw_food: 0.8 }, mult: 1 };
-  // Basis-Produktion der Hauptstadt (steigt mit Hauptstadt-Stufe) + Gebäude
+  if (!me) return { d: { gold: 0.5 }, mult: 1 };
   const capLv = me.capital_level || 1;
-  const mult = (0.8 + me.population * 0.04) * (S.match?.season === 'winter' ? 0.8 : 1);
-  const d = { wood: 0.8 * capLv, gold: 0.4 * capLv, raw_food: 1.0 * capLv };
-  for (const b of myBuildings()) {
-    if (!isDone(b)) continue;
-    const def = BUILDINGS[b.type];
-    if (!def?.prod) continue;
-    const isGoldTile = S.terrain && S.terrain[M.idx(b.x, b.y)] === M.T.GOLD;
-    for (const k in def.prod) d[k] += def.prod[k] * (k === 'gold' && isGoldTile ? 2 : 1);
-  }
-  // Seehandel durch Häfen (Gold steigt mit Entfernung zu anderen Häfen, außer blockiert durch feindliche Schiffe)
-  const myHarbors = myBuildings().filter((b) => b.type === 'harbor');
-  const otherHarbors = S.buildings.filter((b) => b.type === 'harbor' && allied(b.player_id, me.id));
-  for (const h1 of myHarbors) {
-    if (isHarborBlockaded(h1)) continue;
-    let maxDist = 0;
-    for (const h2 of otherHarbors) {
-      if (h2.id !== h1.id) maxDist = Math.max(maxDist, Math.hypot(h2.x - h1.x, h2.y - h1.y));
+  const mult = S.match?.season === 'winter' ? 0.85 : 1;
+  let gold = 1.0 * capLv;
+  for (const prov of S.provinces) {
+    if (prov.isSea) continue;
+    if (S.territory[M.idx(prov.cx, prov.cy)] === me.slot) {
+      gold += provGoldRate(prov.id);
     }
-    d.gold += 1.2 + Math.min(4.5, maxDist * 0.03);
   }
-  // Karawanen-Handel über Land
-  const myCaravans = myBuildings().filter((b) => b.type === 'caravan');
-  const otherCaravans = S.buildings.filter((b) => b.type === 'caravan' && allied(b.player_id, me.id));
-  for (const c1 of myCaravans) {
-    let maxDist = 0;
-    for (const c2 of otherCaravans) {
-      if (c2.id !== c1.id) maxDist = Math.max(maxDist, Math.hypot(c2.x - c1.x, c2.y - c1.y));
-    }
-    d.gold += 1.0 + Math.min(4.0, maxDist * 0.025);
-  }
-  for (const k in d) d[k] *= mult;
-  return { d, mult };
+  return { d: { gold: gold * mult }, mult };
 }
 
 function isHarborBlockaded(h) {
@@ -778,12 +782,18 @@ async function processTrainQueue() {
   S.trainQueue = S.trainQueue.filter((q) => now() < q.readyAt);
   for (const q of ready) {
     let sx = me.capital_x, sy = me.capital_y;
-    if (q.unitType === 'ship' || q.unitType === 'warship') {
+    if (q.provId != null && S.provinces[q.provId] && S.territory[M.idx(S.provinces[q.provId].cx, S.provinces[q.provId].cy)] === me.slot) {
+      sx = S.provinces[q.provId].cx; sy = S.provinces[q.provId].cy;
+    } else if (q.unitType === 'ship' || q.unitType === 'warship') {
       const h = myBuildings().find((b) => b.type === 'harbor' && isDone(b));
       if (h) {
-        const w = [[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy]) => [h.x+dx, h.y+dy]).find(([wx,wy]) => M.inBounds(wx,wy) && S.terrain[M.idx(wx,wy)] === M.T.WATER);
-        sx = w ? w[0] : h.x; sy = w ? w[1] : h.y;
+        const hp = S.provOf ? S.provOf[M.idx(h.x, h.y)] : -1;
+        const seaNb = hp >= 0 ? S.provinces[hp]?.adj.map((id) => S.provinces[id]).find((p) => p?.isSea) : null;
+        if (seaNb) { sx = seaNb.cx; sy = seaNb.cy; } else { sx = h.x; sy = h.y; }
       }
+    } else {
+      const bk = myBuildings().find((b) => b.type === 'barracks' && isDone(b));
+      if (bk) { sx = bk.x; sy = bk.y; }
     }
     const home = S.armies.find((a) => a.player_id === me.id && a.unit_type === q.unitType && a.target_x == null && a.x === sx && a.y === sy);
     if (home) {
@@ -878,8 +888,10 @@ async function runFrontPush() {
   const idle = S.armies.filter((a) => a.player_id === S.me.id && a.target_x == null && a.unit_type !== 'ship' && a.unit_type !== 'warship' && a.unit_type !== 'king' && a.unit_type !== 'spy');
   for (const a of idle.slice(0, 4)) {
     const pid = S.provOf ? S.provOf[M.idx(a.x, a.y)] : -1;
-    const cands = S.provinces.filter((pr) =>
-      !pr.isSea && pr.id !== pid && Math.hypot(pr.cx - a.x, pr.cy - a.y) <= 24 &&
+    const curProv = pid >= 0 ? S.provinces[pid] : null;
+    if (!curProv) continue;
+    const cands = curProv.adj.map((id) => S.provinces[id]).filter((pr) =>
+      pr && !pr.isSea &&
       S.territory[M.idx(pr.cx, pr.cy)] !== S.me.slot &&
       !allied(playerBySlot(S.territory[M.idx(pr.cx, pr.cy)])?.id, S.me.id) &&
       !hasNap(S.me.id, playerBySlot(S.territory[M.idx(pr.cx, pr.cy)])?.id)
@@ -904,30 +916,27 @@ async function clientTick() {
   await runFrontPush();
   const dt = 2 * speed();
   const { d } = estimateRates();
-  const ints = {};
-  let any = false;
-  for (const k of ['wood', 'gold', 'raw_food']) {
-    S.acc[k] += (d[k] || 0) * dt;
-    ints[k] = Math.trunc(S.acc[k]);
-    S.acc[k] -= ints[k];
-    if (ints[k] !== 0) any = true;
-  }
-  if (any) {
-    // Vasallen-Steuer: 25% des Gold-Einkommens an den Lehnsherrn
-    if (me.vassal_of && ints.gold > 0) {
-      const tax = Math.max(1, Math.floor(ints.gold * 0.25));
-      ints.gold -= tax;
+  S.acc.gold = (S.acc.gold || 0) + (d.gold || 0) * dt;
+  const gainGold = Math.trunc(S.acc.gold);
+  S.acc.gold -= gainGold;
+  if (gainGold > 0) {
+    let myGold = gainGold;
+    if (me.vassal_of) {
+      const tax = Math.max(1, Math.floor(myGold * 0.25));
+      myGold -= tax;
       await rpcAdd(me.vassal_of, { gold: tax }, true);
     }
-    await rpcAdd(me.id, ints, true);
-    for (const k in ints) me[k] = Math.max(0, me[k] + ints[k]);
+    await rpcAdd(me.id, { gold: myGold }, true);
+    me.gold = Math.max(0, (me.gold || 0) + myGold);
   }
   const cap = popCap();
   if (me.population < cap) {
-    S.popAcc += dt / 18;
-    if (S.popAcc >= 1) {
-      me.population = Math.min(cap, me.population + 1);
-      S.popAcc -= 1;
+    const regenRate = (1 + countType('house') * 0.35) * dt / 6;
+    S.popAcc += regenRate;
+    const addPop = Math.floor(S.popAcc);
+    if (addPop >= 1) {
+      me.population = Math.min(cap, me.population + addPop);
+      S.popAcc -= addPop;
       await sb.from('match_players').update({ population: me.population }).eq('id', me.id);
     }
   }
@@ -963,35 +972,30 @@ async function sysChat(message) {
 }
 
 // ---------------------------------------------------------------------------
-// AKTIONEN: Bauen auf der Weltkarte, Zeitalter, Truppen, Brücken
+// CONTROL-EUROPA PROVINZ-AUSBAU, ZEITALTER, TRUPPEN, PROVINZ-BEWEGUNG
 // ---------------------------------------------------------------------------
-async function placeWorldBuilding(type, x, y) {
+async function buildInProvince(pid, type) {
   if (!S.me || !S.match || S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
-  const i = M.idx(x, y);
-  if (!M.isPassable(S.terrain[i])) return toast('Hier kann man nicht bauen!', 'err');
-  if (S.territory[i] !== S.me.slot) return toast('Nur in deinem eigenen Gebiet bauen!', 'err');
-  if (S.me.capital_x === x && S.me.capital_y === y) return toast('Auf der Hauptstadt steht schon deine Burg.', 'err');
-  if (S.buildings.some((b) => b.x === x && b.y === y)) return toast('Hier steht bereits ein Gebäude.', 'err');
-  if (type === 'harbor') {
-    const nearWater = [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy]) => M.inBounds(x+dx, y+dy) && S.terrain[M.idx(x+dx, y+dy)] === M.T.WATER);
-    if (!nearWater) return toast('🚢 Ein Hafen muss direkt an Wasser (Küste) gebaut werden!', 'err');
-  }
+  const prov = S.provinces?.[pid];
+  if (!prov || prov.isSea) return toast('Wähle zuerst eine eigene Land-Provinz!', 'err');
+  if (S.territory[M.idx(prov.cx, prov.cy)] !== S.me.slot) return toast('Du kannst nur eigene Provinzen ausbauen!', 'err');
+  if (type === 'harbor' && !isCoastalProv(pid)) return toast('🚢 Ein Hafen braucht eine Küsten-Provinz!', 'err');
   const def = BUILDINGS[type];
   if (!def || !(await spend(def.cost))) return;
+  const endAt = new Date(now() + ((def.buildTime || 6) * 1000) / speed()).toISOString();
   const { data, error } = await sb.from('buildings')
-    .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x, y, construction_end_at: new Date().toISOString() })
+    .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x: prov.cx, y: prov.cy, construction_end_at: endAt })
     .select().single();
   if (error) { await rpcAdd(S.me.id, def.cost, true); return toast(error.message, 'err'); }
   if (data) S.buildings.push(data);
   playSfx('build');
-  toast(`✅ ${def.name} gebaut!`, 'ok');
+  toast(`✅ ${def.name} in „${provName(prov)}“ im Bau (${Math.ceil(def.buildTime / speed())}s)!`, 'ok');
   trackQuest('built', 1);
   if (type === 'fort') trackQuest('fort', 1);
-  if (type === 'harbor' || type === 'caravan') trackQuest('trade', 1);
+  if (type === 'harbor') trackQuest('trade', 1);
   advanceTut('world_built');
-  S.buildType = null;
-  updateModeHint();
   renderPanel();
+  updateTileBar();
 }
 
 async function demolishBuilding(b) {
@@ -1043,22 +1047,25 @@ const totalArmyCount = () => (S.me ? S.armies.filter((a) => a.player_id === S.me
 async function trainUnits(type) {
   const me = S.me, u = UNITS[type];
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
-  if ((type === 'ship' || type === 'warship') && countType('harbor') === 0) return toast('Schiffe brauchen einen fertigen ⚓ Hafen an der Küste!', 'err');
-  if (type !== 'ship' && type !== 'warship' && countType('barracks') === 0) return toast('Baue zuerst eine fertige ⚔️ Kaserne auf der Weltkarte!', 'err');
+  if ((type === 'ship' || type === 'warship') && countType('harbor') === 0) return toast('Schiffe brauchen einen fertigen ⚓ Hafen!', 'err');
+  if (type !== 'ship' && type !== 'warship' && countType('barracks') === 0) return toast('Baue zuerst eine fertige ⚔️ Kaserne in einer Provinz!', 'err');
   if (me.age < u.age) return toast(`Benötigt ${AGE_NAMES[u.age]}.`, 'err');
-  if (totalArmyCount() + BATCH > armyCap()) return toast(`Truppen-Limit (${armyCap()}) erreicht! Baue mehr 🏠 Häuser.`, 'err');
+  if ((me.population || 0) < BATCH) return toast(`Nicht genug 👷 Arbeitskraft (${me.population}/${BATCH})! Baue mehr 🏠 Häuser.`, 'err');
   if (!(await spend(u.cost, BATCH))) return;
-  const ms = ((u.trainTime || 10) * 1000) / speed();
+  me.population = Math.max(0, (me.population || 0) - BATCH);
+  await sb.from('match_players').update({ population: me.population }).eq('id', me.id);
+  const ms = ((u.trainTime || 8) * 1000) / speed();
   const lastEnd = S.trainQueue.length ? Math.max(now(), S.trainQueue[S.trainQueue.length - 1].readyAt) : now();
-  S.trainQueue.push({ unitType: type, readyAt: lastEnd + ms, totalMs: ms });
+  const spawnPid = S.selectedProvId >= 0 && provBuildings(S.selectedProvId).some((b) => b.type === 'barracks') ? S.selectedProvId : null;
+  S.trainQueue.push({ unitType: type, readyAt: lastEnd + ms, totalMs: ms, provId: spawnPid });
   playSfx('click');
   toast(`⏳ ${BATCH}× ${u.name} in Ausbildung (${Math.ceil(ms / 1000)}s)`, 'ok');
   renderPanel();
 }
 
 function travelMs(unitType, x0, y0, x1, y1) {
-  const winterMult = S.match?.season === 'winter' ? 1.25 : 1;
-  return (Math.hypot(x1 - x0, y1 - y0) * (UNITS[unitType]?.speed || 2) * 2400 * winterMult) / speed();
+  const winterMult = S.match?.season === 'winter' ? 1.2 : 1;
+  return (Math.max(12, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.4) * 260 * winterMult) / speed();
 }
 
 function armyPos(a) {
@@ -1071,16 +1078,27 @@ function armyPos(a) {
 
 async function moveArmy(a, tx, ty) {
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
-  const cur = armyPos(a);
-  const sx = a.target_x != null ? Math.round(cur.x) : a.x;
-  const sy = a.target_y != null ? Math.round(cur.y) : a.y;
-  if (sx === tx && sy === ty) return;
-  const enemyWalls = new Set(
-    S.buildings.filter((b) => b.type === 'wall' && b.player_id !== S.me.id && !allied(b.player_id, S.me.id)).map((b) => M.idx(b.x, b.y))
-  );
-  const path = M.checkPath(S.terrain, S.bridges, sx, sy, tx, ty, a.unit_type, S.match.season, enemyWalls);
-  if (!path.ok) return toast(path.reason, 'err');
-  const owner = S.territory[M.idx(tx, ty)];
+  const startPid = S.provOf ? S.provOf[M.idx(a.x, a.y)] : -1;
+  const targetPid = S.provOf ? S.provOf[M.idx(tx, ty)] : -1;
+  if (startPid < 0 || targetPid < 0 || !S.provinces[startPid] || !S.provinces[targetPid]) {
+    return toast('Wähle eine gültige Provinz als Ziel!', 'err');
+  }
+  if (startPid === targetPid) return;
+
+  const isBoat = a.unit_type === 'ship' || a.unit_type === 'warship';
+  const targetProv = S.provinces[targetPid];
+  if (isBoat && !targetProv.isSea && !isCoastalProv(targetPid)) return toast('Schiffe können nur über See-Provinzen fahren!', 'err');
+  if (!isBoat && targetProv.isSea) return toast('Landtruppen können nicht ins tiefe Meer! Nutze Schiffe.', 'err');
+
+  const path = M.findProvPath(S.provinces, startPid, targetPid, (pr) => {
+    if (isBoat) return pr.isSea || isCoastalProv(pr.id);
+    return !pr.isSea;
+  });
+  if (!path || path.length < 2) return toast('Kein Provinz-Pfad dorthin verfügbar!', 'err');
+
+  const nextPid = path[1];
+  const nextProv = S.provinces[nextPid];
+  const owner = S.territory[M.idx(nextProv.cx, nextProv.cy)];
   const ownerP = owner >= 0 ? playerBySlot(owner) : null;
   if (ownerP && hasNap(S.me.id, ownerP.id)) return toast('📜 Aktiver Nichtangriffspakt (NAP) mit diesem Spieler!', 'err');
   if (ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id) && pvpAllowed()) {
@@ -1093,32 +1111,17 @@ async function moveArmy(a, tx, ty) {
       return toast(`⏳ Kriegserklärung läuft noch ${warLeftSec(S.me.id, ownerP.id)}s!`, 'err');
     }
   }
-
-  // Katapult- & Kriegsschiff-Belagerung aus der Ferne (bis 3,5 Tiles Entfernung)
-  if ((a.unit_type === 'catapult' || a.unit_type === 'warship') && Math.hypot(tx - sx, ty - sy) <= 3.5 && pvpAllowed()) {
-    const allowedTargets = a.unit_type === 'warship' ? ['harbor', 'fort', 'tower', 'wall'] : ['wall', 'fort', 'tower'];
-    const targetBld = S.buildings.find((b) =>
-      allowedTargets.includes(b.type) &&
-      b.player_id !== S.me.id && !allied(b.player_id, S.me.id) && !hasNap(S.me.id, b.player_id) &&
-      Math.max(Math.abs(b.x - tx), Math.abs(b.y - ty)) <= 1
-    );
-    if (targetBld) {
-      addFx('boulder', sx, sy, { tx: targetBld.x, ty: targetBld.y, dur: 650 });
-      setTimeout(() => { addFx('boom', targetBld.x, targetBld.y, { dur: 800 }); addFx('text', targetBld.x, targetBld.y, { label: '💥 Zerstört!', color: '#ff8a65' }); }, 600);
-      S.buildings = S.buildings.filter((x) => x.id !== targetBld.id);
-      await sb.from('buildings').delete().eq('id', targetBld.id);
-      playSfx('fire');
-      toast(`💣 Katapult hat ${BUILDINGS[targetBld.type]?.name || 'Gebäude'} aus der Ferne zerstört!`, 'ok');
-      S.selectedArmyId = null; updateModeHint(); renderPanel();
-      return;
-    }
-  }
-  const enemyArmy = S.armies.find((e) => e.player_id && e.player_id !== a.player_id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && !allied(e.player_id, a.player_id));
-  const attacksPlayer = (ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id)) || enemyArmy;
+  const attacksPlayer = ownerP && ownerP.id !== S.me.id && !allied(ownerP.id, S.me.id);
   if (attacksPlayer && !pvpAllowed()) return toast('🕊️ Freizeit-Frieden! Angriffe auf Spieler sind gerade gesperrt.', 'err');
-  const arrives = new Date(now() + travelMs(a.unit_type, sx, sy, tx, ty)).toISOString();
-  a.x = sx; a.y = sy; a.target_x = tx; a.target_y = ty; a.arrives_at = arrives;
-  await sb.from('armies').update({ x: sx, y: sy, target_x: tx, target_y: ty, arrives_at: arrives }).eq('id', a.id);
+
+  // Restliche Route speichern (Provinz-zu-Provinz)
+  if (path.length > 2) S.armyRoutes[a.id] = path.slice(2);
+  else delete S.armyRoutes[a.id];
+
+  const curProv = S.provinces[startPid];
+  const arrives = new Date(now() + travelMs(a.unit_type, curProv.cx, curProv.cy, nextProv.cx, nextProv.cy)).toISOString();
+  a.x = curProv.cx; a.y = curProv.cy; a.target_x = nextProv.cx; a.target_y = nextProv.cy; a.arrives_at = arrives;
+  await sb.from('armies').update({ x: a.x, y: a.y, target_x: a.target_x, target_y: a.target_y, arrives_at: arrives }).eq('id', a.id);
   playSfx(attacksPlayer ? 'horn' : 'click');
   advanceTut('army_moved');
   S.selectedArmyId = null;
@@ -1247,106 +1250,137 @@ function armyPower(a, x, y) {
   if (a.unit_type === 'archer' && tile === M.T.HILL) pw *= 1.5;
   const p = playerById(a.player_id);
   if (p) {
-    pw *= 1 + Math.min(0.5, countType('blacksmith', p) * 0.1);
     pw *= 1 + Math.min(0.3, (S.armyRanks[a.id] || 0) * 0.15); // General-Rang
     if (a.target_x == null) pw *= 1 + Math.min(0.3, (S.entrench[a.id] || 0) * 0.02); // Eingraben
     if (p.id === S.me?.id && S.supplied && !S.supplied[M.idx(x, y)] && a.unit_type !== 'ship' && a.unit_type !== 'warship') {
-      pw *= 0.55; // Eingekesselt / Kein Nachschub!
+      pw *= 0.65; // Kein Nachschub
     }
     const hasKing = S.armies.some((k) => k.player_id === p.id && k.unit_type === 'king' && Math.hypot(armyPos(k).x - x, armyPos(k).y - y) <= 5);
     if (hasKing) pw *= 1.25;
-    if (S.territory[M.idx(x, y)] === p.slot) {
-      pw *= 1.2 + Math.min(0.6, countType('tower', p) * 0.15) + Math.min(0.9, countType('fort', p) * 0.3);
+    const pid = S.provOf && M.inBounds(x, y) ? S.provOf[M.idx(x, y)] : -1;
+    if (pid >= 0 && S.territory[M.idx(x, y)] === p.slot) {
+      const forts = provBuildings(pid).filter((b) => b.type === 'fort').length;
+      pw *= 1.15 + Math.min(0.75, forts * 0.25);
     }
   }
   return pw;
 }
 
-function fight(att, def) {
-  const ap = armyPower(att, att.x, att.y), dp = armyPower(def, def.x, def.y);
-  if (dp <= 0) return { attackerWins: true, remaining: att.count };
-  if (ap <= 0) return { attackerWins: false, remaining: def.count };
-  if (ap >= dp) return { attackerWins: true, remaining: Math.max(1, Math.ceil(att.count * (1 - (dp / ap) * 0.8))) };
-  return { attackerWins: false, remaining: Math.max(1, Math.ceil(def.count * (1 - (ap / dp) * 0.8))) };
-}
-
 async function updateArmy(a, patch) { Object.assign(a, patch); await sb.from('armies').update(patch).eq('id', a.id); }
-async function deleteArmy(a) { S.armies = S.armies.filter((x) => x.id !== a.id); await sb.from('armies').delete().eq('id', a.id); }
+async function deleteArmy(a) { S.armies = S.armies.filter((x) => x.id !== a.id); delete S.armyRoutes[a.id]; await sb.from('armies').delete().eq('id', a.id); }
 
 async function runCombatTick(pvp) {
-  if (!pvp) return;
-  const idle = S.armies.filter((a) => a.player_id && a.target_x == null && a.count > 0);
-  const busy = new Set();
-  for (const a of idle) {
-    if (busy.has(a.id) || !S.armies.includes(a)) continue;
-    const foe = idle.find((e) => !busy.has(e.id) && e.id !== a.id && S.armies.includes(e) && e.player_id !== a.player_id && !allied(a.player_id, e.player_id) && !hasNap(a.player_id, e.player_id) && Math.max(Math.abs(e.x - a.x), Math.abs(e.y - a.y)) <= 1);
-    if (!foe) continue;
-    busy.add(a.id); busy.add(foe.id);
-    const ap = armyPower(a, a.x, a.y), dp = armyPower(foe, foe.x, foe.y);
-    const lossA = Math.max(1, Math.ceil(a.count * clamp((dp / Math.max(1, ap)) * 0.22, 0.08, 0.35)));
-    const lossB = Math.max(1, Math.ceil(foe.count * clamp((ap / Math.max(1, dp)) * 0.22, 0.08, 0.35)));
-    addFx('boom', foe.x, foe.y, { dur: 700 });
-    addFx('text', foe.x, foe.y, { label: `-${lossB}`, color: '#ff6b6b', dur: 800 });
-    a.count -= lossA; foe.count -= lossB;
-    if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
-    if (foe.count <= 0) {
-      await deleteArmy(foe);
-      S.armyRanks[a.id] = (S.armyRanks[a.id] || 0) + 1; // General-Rang aufgestiegen!
-      const pA = playerById(a.player_id), pB = playerById(foe.player_id);
-      if (pA && pB) await sysChat(`⚔️ ${pA.kingdom_name} besiegt eine Armee von ${pB.kingdom_name}!`);
-      if (a.count > 0 && pA) conquer(foe.x, foe.y, pA, pvp);
-    } else await updateArmy(foe, { count: foe.count });
+  const battles = new Map();
+  for (const a of S.armies) {
+    if (!a.player_id || a.count <= 0 || a.target_x == null || a.arrives_at != null) continue;
+    const tpid = S.provOf && M.inBounds(a.target_x, a.target_y) ? S.provOf[M.idx(a.target_x, a.target_y)] : -1;
+    if (tpid < 0 || !S.provinces[tpid]) continue;
+    if (!battles.has(tpid)) battles.set(tpid, []);
+    battles.get(tpid).push(a);
+  }
+  for (const [tpid, attackers] of battles.entries()) {
+    const prov = S.provinces[tpid];
+    const ownerSlot = S.territory[M.idx(prov.cx, prov.cy)];
+    const ownerP = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
+    const mainAtt = playerById(attackers[0].player_id);
+    if (!mainAtt) continue;
+    if (ownerP && !pvp) {
+      for (const a of attackers) await updateArmy(a, { target_x: null, target_y: null, arrives_at: null });
+      delete S.provHp[tpid]; continue;
+    }
+    if (ownerSlot === mainAtt.slot || (ownerP && (allied(ownerP.id, mainAtt.id) || hasNap(mainAtt.id, ownerP.id)))) {
+      for (const a of attackers) await updateArmy(a, { x: prov.cx, y: prov.cy, target_x: null, target_y: null, arrives_at: null });
+      delete S.provHp[tpid]; continue;
+    }
+    const defenders = S.armies.filter((d) =>
+      d.player_id && d.count > 0 && d.target_x == null &&
+      S.provOf?.[M.idx(d.x, d.y)] === tpid &&
+      d.player_id !== mainAtt.id && !allied(d.player_id, mainAtt.id)
+    );
+    if (S.provHp[tpid] == null) S.provHp[tpid] = provDefense(tpid);
+    let attPow = attackers.reduce((s, a) => s + armyPower(a, a.x, a.y), 0);
+    const hasCatapult = attackers.some((a) => a.unit_type === 'catapult');
+    let defPow = defenders.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + Math.max(0, S.provHp[tpid]) * (hasCatapult ? 0.45 : 0.85);
+    const bx = (attackers[0].x + prov.cx) / 2, by = (attackers[0].y + prov.cy) / 2;
+    addFx('boom', bx, by, { dur: 650 });
+
+    const totalAttCount = attackers.reduce((s, a) => s + a.count, 0);
+    const attLossTotal = Math.max(1, Math.round(totalAttCount * clamp((defPow / Math.max(1, attPow)) * 0.14, 0.04, 0.25)));
+    let remLoss = attLossTotal;
+    for (const a of attackers) {
+      if (remLoss <= 0) break;
+      const take = Math.min(a.count, Math.max(1, Math.round((a.count / Math.max(1, totalAttCount)) * attLossTotal)));
+      a.count -= take; remLoss -= take;
+      if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
+    }
+
+    if (defenders.length > 0) {
+      const totalDefCount = defenders.reduce((s, d) => s + d.count, 0);
+      const defLossTotal = Math.max(1, Math.round(totalDefCount * clamp((attPow / Math.max(1, defPow)) * 0.18, 0.06, 0.30)));
+      addFx('text', prov.cx, prov.cy, { label: `-${defLossTotal}`, color: '#ff6b6b', dur: 700 });
+      for (const d of defenders) {
+        const take = Math.min(d.count, Math.max(1, Math.round((d.count / Math.max(1, totalDefCount)) * defLossTotal)));
+        d.count -= take;
+        if (d.count <= 0) await deleteArmy(d); else await updateArmy(d, { count: d.count });
+      }
+    } else {
+      const wallDmg = Math.max(12, Math.round((attPow / Math.max(20, defPow)) * (hasCatapult ? 45 : 24)));
+      S.provHp[tpid] = Math.max(0, S.provHp[tpid] - wallDmg);
+      addFx('text', prov.cx, prov.cy, { label: `🛡️-${wallDmg}`, color: '#ffd23f', dur: 700 });
+    }
+
+    const aliveAtt = attackers.filter((a) => a.count > 0 && S.armies.includes(a));
+    const aliveDef = defenders.filter((d) => d.count > 0 && S.armies.includes(d));
+    if (aliveAtt.length > 0 && aliveDef.length === 0 && (S.provHp[tpid] || 0) <= 0) {
+      delete S.provHp[tpid];
+      for (const a of aliveAtt) {
+        S.armyRanks[a.id] = (S.armyRanks[a.id] || 0) + 1;
+        await updateArmy(a, { x: prov.cx, y: prov.cy, target_x: null, target_y: null, arrives_at: null });
+      }
+      await conquer(prov.cx, prov.cy, mainAtt, pvp);
+    } else if (aliveAtt.length === 0) {
+      delete S.provHp[tpid];
+    }
   }
 }
 
 async function resolveArrival(a) {
   const tx = a.target_x, ty = a.target_y, pvp = pvpAllowed(), attacker = playerById(a.player_id);
-  let count = a.count;
-  const foe = S.armies.find((e) => e.id !== a.id && e.target_x == null && Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= 1 && e.player_id && e.player_id !== a.player_id && !allied(e.player_id, a.player_id) && !hasNap(a.player_id, e.player_id));
-  if (foe && pvp) {
-    // Armeen treffen aufeinander -> langsamer Echtzeit-Kampf startet!
-    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-    addFx('boom', tx, ty, { dur: 900 });
+  const tpid = S.provOf && M.inBounds(tx, ty) ? S.provOf[M.idx(tx, ty)] : -1;
+  const targetProv = tpid >= 0 ? S.provinces[tpid] : null;
+  if (!attacker || !targetProv) {
+    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null });
     return;
   }
-  if (attacker) {
-    if (a.unit_type === 'spy') {
-      await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-      const ownerSlot = S.territory[M.idx(tx, ty)];
-      const op = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
-      if (op && op.id !== attacker.id) S.spied[op.id] = now() + 120000;
-      toast('🕵️ Spion hat das Gebiet ausgekundschaftet!', 'ok');
-      return;
-    }
-    const tileOwnerSlot = S.territory[M.idx(tx, ty)];
-    if (tileOwnerSlot !== attacker.slot) {
-      const tile = S.terrain[M.idx(tx, ty)];
-      const ownerP = tileOwnerSlot >= 0 ? playerBySlot(tileOwnerSlot) : null;
-      if ((ownerP && allied(ownerP.id, attacker.id)) || (ownerP && hasNap(attacker.id, ownerP.id))) {
-        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-        return;
-      }
-      if (ownerP && !pvp) {
-        await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-        return;
-      }
-      const pid = S.provOf && M.inBounds(tx, ty) ? S.provOf[M.idx(tx, ty)] : -1;
-      const guardBonus = pid >= 0 ? (S.match?.prov_guards?.[pid] || 0) : 0;
-      const garrison = ownerP
-        ? 110 + guardBonus + ((ownerP.capital_level || 1) - 1) * 80 + countType('fort', ownerP) * 70 + countType('tower', ownerP) * 35 + countType('wall', ownerP) * 30
-        : (tile === M.T.GOLD ? 140 : tile === M.T.HILL || tile === M.T.FOREST ? 100 : 75);
-      const ap = armyPower({ ...a, count }, tx, ty);
-      if (ap < garrison) {
-        await deleteArmy(a);
-        await sysChat(`🛡️ Angriff von ${attacker.kingdom_name} scheiterte an der Provinz-Garnison (Kraft ${Math.round(ap)} < ${garrison})!`);
-        return;
-      }
-      count = Math.max(1, Math.ceil(count * (1 - (garrison / ap) * 0.45)));
-    }
-    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
-    conquer(tx, ty, attacker, pvp);
-  } else {
-    await updateArmy(a, { x: tx, y: ty, target_x: null, target_y: null, arrives_at: null, count });
+  if (a.unit_type === 'spy') {
+    await updateArmy(a, { x: targetProv.cx, y: targetProv.cy, target_x: null, target_y: null, arrives_at: null });
+    const ownerSlot = S.territory[M.idx(targetProv.cx, targetProv.cy)];
+    const op = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
+    if (op && op.id !== attacker.id) S.spied[op.id] = now() + 120000;
+    toast('🕵️ Spion hat die Provinz ausgekundschaftet!', 'ok');
+    return;
+  }
+
+  const ownerSlot = S.territory[M.idx(targetProv.cx, targetProv.cy)];
+  const ownerP = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
+  const isEnemyOrNeutral = ownerSlot !== attacker.slot && (!ownerP || (!allied(ownerP.id, attacker.id) && !hasNap(attacker.id, ownerP.id)));
+
+  if (isEnemyOrNeutral && (!ownerP || pvp)) {
+    // HOI4-Schlacht an der Provinzgrenze starten!
+    if (S.provHp[tpid] == null) S.provHp[tpid] = provDefense(tpid);
+    await updateArmy(a, { target_x: targetProv.cx, target_y: targetProv.cy, arrives_at: null });
+    addFx('boom', (a.x + targetProv.cx) / 2, (a.y + targetProv.cy) / 2, { dur: 900 });
+    return;
+  }
+
+  // Freundliche Provinz erreicht -> einmarschieren & nächste Etappe prüfen
+  await updateArmy(a, { x: targetProv.cx, y: targetProv.cy, target_x: null, target_y: null, arrives_at: null });
+  const route = S.armyRoutes[a.id];
+  if (route && route.length > 0 && a.player_id === S.me?.id) {
+    const nextPid = route.shift();
+    if (!route.length) delete S.armyRoutes[a.id];
+    const nextProv = S.provinces[nextPid];
+    if (nextProv) await moveArmy(a, nextProv.cx, nextProv.cy);
   }
 }
 
@@ -1608,31 +1642,31 @@ function render() {
     }
   }
 
-  // Weltkarten-Gebäude (inkl. verbundener Mauern & Hafen-Blockaden)
-  const wallSet = new Set(S.buildings.filter((b) => b.type === 'wall').map((b) => M.idx(b.x, b.y)));
+  // Provinz-Gebäude (Control Europe: alle Gebäude einer Provinz am Provinz-Zentrum)
+  const groupedBlds = new Map();
   for (const b of S.buildings) {
     if (b.type === 'bridge') continue;
-    const i = M.idx(b.x, b.y);
-    if (!S.explored[i] && !S.fogOff && b.player_id !== S.me.id) continue;
-    const owner = playerById(b.player_id);
-    const done = isDone(b);
-    ctx.globalAlpha = done ? 1 : 0.55;
-    if (b.type === 'wall') {
-      const mask = (b.y > 0 && wallSet.has(i - M.W) ? 1 : 0) | (b.x < M.W - 1 && wallSet.has(i + 1) ? 2 : 0) | (b.y < M.H - 1 && wallSet.has(i + M.W) ? 4 : 0) | (b.x > 0 && wallSet.has(i - 1) ? 8 : 0);
-      ctx.drawImage(getConnectedSprite('wall', mask), b.x * TILE, b.y * TILE, TILE, TILE);
-    } else {
-      ctx.drawImage(getBuildingSprite(b.type, owner ? owner.color : '#888'), b.x * TILE, b.y * TILE, TILE, TILE);
-      if (done && b.type === 'harbor' && isHarborBlockaded(b)) {
-        ctx.fillStyle = '#ff5252'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('⚓', b.x * TILE + TILE / 2, b.y * TILE - 1);
-      }
-    }
+    const key = `${b.x}_${b.y}_${b.type}`;
+    if (!groupedBlds.has(key)) groupedBlds.set(key, { ...b, cnt: 1, allDone: isDone(b) });
+    else { const g = groupedBlds.get(key); g.cnt++; if (isDone(b)) g.allDone = true; }
+  }
+  const slotCounters = new Map();
+  for (const g of groupedBlds.values()) {
+    const i = M.idx(g.x, g.y);
+    if (!S.explored[i] && !S.fogOff && g.player_id !== S.me.id) continue;
+    const owner = playerById(g.player_id);
+    const posKey = `${g.x}_${g.y}`;
+    const idxInProv = slotCounters.get(posKey) || 0;
+    slotCounters.set(posKey, idxInProv + 1);
+    const ox = (idxInProv % 3 - 1) * 10, oy = Math.floor(idxInProv / 3) * 10 - 4;
+    const bx = g.x * TILE + ox, by = g.y * TILE + oy;
+    ctx.globalAlpha = g.allDone ? 1 : 0.55;
+    ctx.drawImage(getBuildingSprite(g.type, owner ? owner.color : '#888'), bx, by, 12, 12);
     ctx.globalAlpha = 1;
-    if (!done) {
-      const total = ((BUILDINGS[b.type]?.buildTime || 8) * 1000) / speed();
-      const prog = clamp(1 - (new Date(b.construction_end_at).getTime() - now()) / total, 0, 1);
-      ctx.fillStyle = '#000a'; ctx.fillRect(b.x * TILE, b.y * TILE + TILE - 2, TILE, 2);
-      ctx.fillStyle = '#e8b64c'; ctx.fillRect(b.x * TILE, b.y * TILE + TILE - 2, TILE * prog, 2);
+    if (g.cnt > 1) {
+      ctx.fillStyle = '#000c'; ctx.fillRect(bx + 6, by + 6, 8, 7);
+      ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(String(g.cnt), bx + 10, by + 12);
     }
   }
 
@@ -1681,11 +1715,33 @@ function render() {
       ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, TILE * 0.7, 0, Math.PI * 2); ctx.stroke();
     }
     if (a.id === S.selectedArmyId) {
-      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.2; ctx.strokeRect(px, py, TILE, TILE);
-      if (a.unit_type === 'catapult' || a.unit_type === 'warship') {
-        ctx.strokeStyle = 'rgba(255, 130, 60, 0.45)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, 3.5 * TILE, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.4; ctx.strokeRect(px, py, TILE, TILE);
+      // Zeige erreichbare Nachbar-Provinzen (Provinz-zu-Provinz Bewegung)
+      const curPid = S.provOf && M.inBounds(a.x, a.y) ? S.provOf[M.idx(a.x, a.y)] : -1;
+      const curPr = curPid >= 0 ? S.provinces[curPid] : null;
+      if (curPr) {
+        ctx.strokeStyle = 'rgba(255, 220, 90, 0.45)'; ctx.lineWidth = 1.1; ctx.setLineDash([3, 3]);
+        for (const nid of curPr.adj) {
+          const nb = S.provinces[nid];
+          if (!nb) continue;
+          ctx.beginPath(); ctx.moveTo(curPr.cx * TILE + TILE / 2, curPr.cy * TILE + TILE / 2);
+          ctx.lineTo(nb.cx * TILE + TILE / 2, nb.cy * TILE + TILE / 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(nb.cx * TILE + TILE / 2, nb.cy * TILE + TILE / 2, 5, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.setLineDash([]);
       }
+    }
+    // HOI4-Angriffspfeil für aktiv kämpfende Armeen (arrives_at == null && target_x != null)
+    if (a.target_x != null && !a.arrives_at) {
+      const txp = a.target_x * TILE + TILE / 2, typ = a.target_y * TILE + TILE / 2;
+      ctx.strokeStyle = 'rgba(255, 70, 70, 0.85)'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(px + TILE / 2, py + TILE / 2); ctx.lineTo(txp, typ); ctx.stroke();
+      const ang = Math.atan2(typ - (py + TILE / 2), txp - (px + TILE / 2));
+      ctx.fillStyle = '#ff4646';
+      ctx.beginPath(); ctx.moveTo(txp, typ);
+      ctx.lineTo(txp - 7 * Math.cos(ang - 0.5), typ - 7 * Math.sin(ang - 0.5));
+      ctx.lineTo(txp - 7 * Math.cos(ang + 0.5), typ - 7 * Math.sin(ang + 0.5));
+      ctx.closePath(); ctx.fill();
     }
     ctx.drawImage(sprite, px, py, TILE, TILE);
     const rank = S.armyRanks[a.id] || 0;
@@ -1695,27 +1751,33 @@ function render() {
     ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), px + TILE / 2, py + TILE);
   }
 
-  // HOI4 Battle Bubbles (🟢/🔴 %) auf aktiven Front-Gefechten
-  if (pvpAllowed()) {
-    const myIdle = S.armies.filter((a) => a.player_id === S.me.id && a.target_x == null && a.count > 0);
-    for (const a of myIdle) {
-      const foe = S.armies.find((e) => e.player_id && e.player_id !== S.me.id && !allied(e.player_id, S.me.id) && e.target_x == null && Math.max(Math.abs(e.x - a.x), Math.abs(e.y - a.y)) <= 1.5);
-      if (!foe) continue;
-      const ap = armyPower(a, a.x, a.y), dp = armyPower(foe, foe.x, foe.y);
-      const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
-      const bx = ((a.x + foe.x) / 2) * TILE + TILE / 2, by = ((a.y + foe.y) / 2) * TILE - 4;
-      ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
-      ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(String(pct), bx, by + 2);
-    }
+  // HOI4 Battle Bubbles (🟢/🟡/🔴 %) für alle aktiven Provinz-Schlachten
+  const seenBattles = new Set();
+  for (const a of S.armies) {
+    if (!a.player_id || a.count <= 0 || a.target_x == null || a.arrives_at != null) continue;
+    const tpid = S.provOf && M.inBounds(a.target_x, a.target_y) ? S.provOf[M.idx(a.target_x, a.target_y)] : -1;
+    if (tpid < 0 || seenBattles.has(tpid)) continue;
+    seenBattles.add(tpid);
+    const prov = S.provinces[tpid];
+    if (!prov) continue;
+    const atts = S.armies.filter((x) => x.player_id && x.count > 0 && x.target_x === a.target_x && x.target_y === a.target_y && !x.arrives_at);
+    const defs = S.armies.filter((d) => d.player_id && d.count > 0 && !d.target_x && S.provOf?.[M.idx(d.x, d.y)] === tpid && !allied(d.player_id, a.player_id));
+    const ap = atts.reduce((s, x) => s + armyPower(x, x.x, x.y), 0);
+    const dp = defs.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + (S.provHp[tpid] ?? provDefense(tpid)) * 0.85;
+    const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
+    const bx = ((a.x + prov.cx) / 2) * TILE + TILE / 2, by = ((a.y + prov.cy) / 2) * TILE;
+    ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
+    ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(String(pct), bx, by + 2.5);
   }
 
-  if (S.selectedTile) {
-    ctx.strokeStyle = `rgba(232, 182, 76, ${0.6 + 0.35 * Math.sin(tNow / 200)})`;
-    ctx.lineWidth = (1 / z) * 2;
-    ctx.strokeRect(S.selectedTile.x * TILE, S.selectedTile.y * TILE, TILE, TILE);
+  if (S.selectedProvId >= 0 && S.provinces[S.selectedProvId]) {
+    const sp = S.provinces[S.selectedProvId];
+    ctx.strokeStyle = `rgba(232, 182, 76, ${0.7 + 0.3 * Math.sin(tNow / 200)})`;
+    ctx.lineWidth = (1 / z) * 2.2;
+    ctx.beginPath(); ctx.arc(sp.cx * TILE + TILE / 2, sp.cy * TILE + TILE / 2, 11, 0, Math.PI * 2); ctx.stroke();
   }
   if (!S.fogOff) {
     if (S.fogBuilt !== S.fogVersion) rebuildFogCanvas();
@@ -1921,22 +1983,21 @@ async function renameProvince(pid) {
 async function gatherAllArmies() {
   const me = S.me;
   if (!me || me.capital_x == null) return;
-  const idle = S.armies.filter((a) => a.player_id === me.id && a.target_x == null && a.unit_type !== 'ship' && (a.x !== me.capital_x || a.y !== me.capital_y));
+  const idle = S.armies.filter((a) => a.player_id === me.id && a.target_x == null && a.unit_type !== 'ship' && a.unit_type !== 'warship' && (a.x !== me.capital_x || a.y !== me.capital_y));
   if (!idle.length) return toast('Keine freien Land-Armeen außerhalb der Hauptstadt.', 'err');
   let moved = 0;
   for (const a of idle) {
-    const arrives = new Date(now() + travelMs(a.unit_type, a.x, a.y, me.capital_x, me.capital_y)).toISOString();
-    a.target_x = me.capital_x; a.target_y = me.capital_y; a.arrives_at = arrives;
-    await sb.from('armies').update({ target_x: me.capital_x, target_y: me.capital_y, arrives_at: arrives }).eq('id', a.id);
+    await moveArmy(a, me.capital_x, me.capital_y);
     moved++;
   }
   playSfx('horn');
-  toast(`⚡ ${moved} Armee(n) sammeln sich bei der Hauptstadt!`, 'ok');
+  toast(`⚡ ${moved} Armee(n) marschieren Provinz-zu-Provinz zur Hauptstadt!`, 'ok');
   renderPanel();
 }
 
 function onCanvasClick(t) {
   if (!S.me || !S.match || !M.inBounds(t.x, t.y)) return;
+  const pid = S.provOf ? S.provOf[M.idx(t.x, t.y)] : -1;
   if (S.frontlineMode) {
     S.frontTarget = { x: t.x, y: t.y };
     S.frontlineMode = false;
@@ -1944,26 +2005,31 @@ function onCanvasClick(t) {
     toast(`🏹 Angriffsziel gesetzt! Starte jetzt „▶️ Angriff“!`, 'ok');
     updateModeHint(); renderPanel(); return;
   }
-  if (S.buildType) { queueBuild(S.buildType, t.x, t.y); return; }
-  if (S.bridgeMode) { queueBuild('bridge', t.x, t.y); return; }
 
   const own = S.armies.find((a) => {
     if (a.player_id !== S.me.id || a.id === S.selectedArmyId) return false;
     const pos = armyPos(a);
-    return Math.abs(pos.x - t.x) <= 0.8 && Math.abs(pos.y - t.y) <= 0.8;
+    return Math.hypot(pos.x - t.x, pos.y - t.y) <= 2.2;
   });
   const sel = S.armies.find((a) => a.id === S.selectedArmyId);
   if (sel) {
-    if (own && own.x === sel.x && own.y === sel.y) { S.selectedArmyId = own.id; return renderPanel(); }
+    if (own && S.provOf?.[M.idx(own.x, own.y)] === S.provOf?.[M.idx(sel.x, sel.y)]) {
+      S.selectedArmyId = own.id; return renderPanel();
+    }
     moveArmy(sel, t.x, t.y); return;
   }
-  if (own) {
+  if (own && S.activeTab === 'army') {
     S.selectedArmyId = own.id; playSfx('click');
-    updateModeHint(); setActiveTab('army'); return;
+    updateModeHint(); renderPanel(); return;
   }
+
   S.selectedTile = t;
+  if (pid >= 0) S.selectedProvId = pid;
   advanceTut('tile_clicked');
   updateTileBar();
+  if (pid >= 0 && S.provinces[pid] && !S.provinces[pid].isSea && S.territory[M.idx(S.provinces[pid].cx, S.provinces[pid].cy)] === S.me.slot) {
+    if (S.activeTab === 'build') renderPanel();
+  }
 }
 
 function updateTileBar() {
@@ -1971,24 +2037,21 @@ function updateTileBar() {
   if (!bar || !S.selectedTile || !S.terrain) { if (bar) bar.hidden = true; return; }
   const { x, y } = S.selectedTile, i = M.idx(x, y);
   const known = S.explored[i] || S.fogOff;
-  const owner = S.territory[i] >= 0 ? playerBySlot(S.territory[i]) : null;
   const pid = S.provOf ? S.provOf[i] : -1;
   const prov = pid >= 0 ? S.provinces[pid] : null;
-  const bld = S.buildings.find((b) => b.x === x && b.y === y);
+  const ownerSlot = prov ? S.territory[M.idx(prov.cx, prov.cy)] : S.territory[i];
+  const owner = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
 
-  const gBonus = pid >= 0 ? (S.match?.prov_guards?.[pid] || 0) : 0;
   bar.innerHTML = '';
-  bar.appendChild(h(`<b>${known && prov ? `🏰 Provinz ${esc(provName(prov))}` : `Feld (${x}, ${y})`}</b> · ` +
-    `${known ? M.TERRAIN_LABELS[S.terrain[i]] : '???'} · ` +
+  const defVal = prov ? provDefense(pid) : 0;
+  const goldVal = prov ? provGoldRate(pid).toFixed(1) : '0';
+  bar.appendChild(h(`<b>${known && prov ? `🏛️ ${esc(provName(prov))}` : `Feld (${x}, ${y})`}</b> · ` +
     `${known ? (owner ? `<span style="color:${owner.color}">${esc(owner.kingdom_name)}</span>` : 'Neutral') : '???'}` +
-    (gBonus > 0 && known ? ` · 🛡️+${gBonus}` : '') +
-    (bld && known ? ` · ${BUILDINGS[bld.type]?.name || 'Brücke'}` : '')));
-  if (owner && owner.id === S.me?.id && pid >= 0) {
+    (known && prov && !prov.isSea ? ` · 🛡️${defVal} · +${goldVal}💰/s` : '')));
+  if (owner && owner.id === S.me?.id && pid >= 0 && !prov?.isSea) {
+    bar.appendChild(btn('🔨 Ausbauen', () => { S.selectedProvId = pid; setActiveTab('build'); }, 'btn small primary'));
     bar.appendChild(btn('🛡️ +50 (40💰)', () => reinforceProvince(pid), 'btn small gold'));
     bar.appendChild(btn('✏️ Name', () => renameProvince(pid), 'btn small'));
-  }
-  if (bld && bld.player_id === S.me?.id && bld.type !== 'bridge') {
-    bar.appendChild(btn('🪓 Abreißen', () => demolishBuilding(bld), 'btn small danger'));
   }
   bar.appendChild(btn('📍 Ping', () => sendPing(x, y), 'btn small'));
   bar.hidden = false;
@@ -2062,7 +2125,7 @@ function trackQuest(id, inc) {
 async function upgradeCapital() {
   const me = S.me, lv = me.capital_level || 1;
   if (lv >= 3) return;
-  const cost = lv === 1 ? { wood: 120, gold: 80 } : { wood: 250, gold: 180 };
+  const cost = lv === 1 ? { gold: 150 } : { gold: 350 };
   if (!(await spend(cost))) return;
   me.capital_level = lv + 1;
   await sb.from('match_players').update({ capital_level: me.capital_level }).eq('id', me.id);
@@ -2074,24 +2137,59 @@ async function upgradeCapital() {
 function panelBuild(el) {
   const me = S.me;
   const { d } = estimateRates();
-  el.appendChild(h(`<div class="info-box"><h3>🎯 Missionen</h3>` +
-    QUESTS.map((q) => {
-      const done = S.quests.done[q.id];
-      const cur = Math.min(q.goal, S.quests[q.id] || 0);
-      return `<div class="stat"><span>${done ? '✅' : '⬜'} ${q.label}</span><b>${done ? `+${q.reward}💰` : `${cur}/${q.goal}`}</b></div>`;
-    }).join('') + `</div>`));
+  el.appendChild(h(`<div class="info-box"><h3>💰 Reichs-Wirtschaft</h3>
+    <div class="stat"><span>💰 Gold-Einkommen</span><b>+${d.gold.toFixed(1)}/s</b></div>
+    <div class="stat"><span>👷 Arbeitskraft</span><b>${fmt(me.population)}/${popCap()}</b></div>
+    <p class="muted" style="margin-top:4px">Baue 🏠 Häuser für mehr Arbeitskraft, 💰 Märkte für Gold & 🏰 Festungen für Verteidigung!</p></div>`));
 
-  el.appendChild(h(`<div class="info-box"><h3>📊 Produktion / Sek.</h3>
-    <div class="stat"><span>🪵 Holz</span><b>+${d.wood.toFixed(1)}</b></div>
-    <div class="stat"><span>💰 Gold</span><b>+${d.gold.toFixed(1)}</b></div>
-    <div class="stat"><span>🌾 Nahrung</span><b>+${d.raw_food.toFixed(1)}</b></div>
-    <div class="stat"><span>👥 Einwohner</span><b>${me.population}/${popCap()}</b></div></div>`));
+  // Aktuelle ausgewählte Provinz (Standard: Hauptstadt-Provinz)
+  let pid = S.selectedProvId;
+  let prov = pid >= 0 ? S.provinces[pid] : null;
+  if (!prov || prov.isSea || S.territory[M.idx(prov.cx, prov.cy)] !== me.slot) {
+    pid = S.provOf && me.capital_x != null ? S.provOf[M.idx(me.capital_x, me.capital_y)] : -1;
+    prov = pid >= 0 ? S.provinces[pid] : null;
+  }
+
+  if (prov) {
+    const blds = provBuildings(pid);
+    const pending = S.buildings.filter((b) => b.x === prov.cx && b.y === prov.cy && !isDone(b));
+    const counts = {};
+    for (const b of blds) counts[b.type] = (counts[b.type] || 0) + 1;
+    const pbox = h(`<div class="info-box" style="border-left:4px solid ${me.color}">
+      <h3>🏛️ Provinz: ${esc(provName(prov))}</h3>
+      <div class="stat"><span>🛡️ Verteidigung</span><b>${provDefense(pid)}</b></div>
+      <div class="stat"><span>💰 Provinz-Gold</span><b>+${provGoldRate(pid).toFixed(1)}/s</b></div>
+      <div class="stat"><span>🏗️ Gebäude</span><b>${Object.entries(counts).map(([k, v]) => `${BUILDINGS[k]?.name || k}×${v}`).join(', ') || 'Keine'}</b></div>
+      ${pending.length ? `<p class="muted">⏳ ${pending.length} Gebäude im Bau…</p>` : ''}
+    </div>`);
+    const pRow = document.createElement('div'); pRow.className = 'row'; pRow.style.marginTop = '6px';
+    pRow.appendChild(btn('🛡️ +50 Def (40💰)', () => reinforceProvince(pid), 'btn small gold'));
+    pRow.appendChild(btn('✏️ Umbenennen', () => renameProvince(pid), 'btn small'));
+    pbox.firstChild.appendChild(pRow);
+    el.appendChild(pbox);
+
+    el.appendChild(h(`<h3>🔨 In „${esc(provName(prov))}“ bauen</h3><p class="muted">Tippe eine andere Provinz auf der Karte an, um sie auszubauen.</p>`));
+    const grid = document.createElement('div'); grid.className = 'grid2';
+    for (const [type, def] of Object.entries(BUILDINGS)) {
+      if (type === 'harbor' && !isCoastalProv(pid)) continue;
+      const afford = (me.gold || 0) >= (def.cost.gold || 0);
+      const b = document.createElement('button');
+      b.className = 'bcard';
+      b.title = def.desc; b.disabled = !afford;
+      b.innerHTML = `<img src="${spriteUrl(getBuildingSprite(type, me.color), 'b' + type + me.color)}" alt=""><div><div class="name">${def.name} (${counts[type] || 0})</div><div class="cost">${costText(def.cost)}</div></div>`;
+      b.onclick = () => buildInProvince(pid, type);
+      grid.appendChild(b);
+    }
+    el.appendChild(grid);
+  } else {
+    el.appendChild(h('<p class="muted">Tippe eine deiner Provinzen auf der Karte an, um sie auszubauen.</p>'));
+  }
 
   const capLv = me.capital_level || 1;
-  const capBox = h(`<div class="info-box"><h3>🏰 Hauptstadt (Stufe ${capLv}/3)</h3></div>`);
+  const capBox = h(`<div class="info-box" style="margin-top:8px"><h3>🏰 Hauptstadt (Stufe ${capLv}/3)</h3></div>`);
   if (capLv < 3) {
-    const cCost = capLv === 1 ? { wood: 120, gold: 80 } : { wood: 250, gold: 180 };
-    capBox.firstChild.appendChild(h(`<p class="muted">Mehr Basis-Produktion & Verteidigung (${costText(cCost)})</p>`));
+    const cCost = capLv === 1 ? { gold: 150 } : { gold: 350 };
+    capBox.firstChild.appendChild(h(`<p class="muted">+50 Verteidigung & +1💰/s (${costText(cCost)})</p>`));
     capBox.firstChild.appendChild(btn(`⬆️ Hauptstadt Stufe ${capLv + 1}`, upgradeCapital, 'btn small primary'));
   } else capBox.firstChild.appendChild(h('<p class="muted">Maximale Stufe erreicht!</p>'));
   el.appendChild(capBox);
@@ -2102,39 +2200,18 @@ function panelBuild(el) {
     ageBox.firstChild.appendChild(btn('⬆️ Zeitalter aufsteigen', ageUp, 'btn small gold'));
   } else ageBox.firstChild.appendChild(h('<p class="muted">Höchstes Zeitalter erreicht!</p>'));
   el.appendChild(ageBox);
-
-  el.appendChild(h('<h3>🔨 Auf Weltkarte bauen</h3><p class="muted">Gebäude wählen, dann in deinem Gebiet antippen.</p>'));
-  const grid = document.createElement('div'); grid.className = 'grid2';
-  for (const [type, def] of Object.entries(BUILDINGS)) {
-    const afford = Object.entries(def.cost).every(([k, v]) => (me[k] || 0) >= v);
-    const b = document.createElement('button');
-    b.className = `bcard${S.buildType === type ? ' active' : ''}`;
-    b.title = def.desc; b.disabled = !afford;
-    b.innerHTML = `<img src="${spriteUrl(getBuildingSprite(type, me.color), 'b' + type + me.color)}" alt=""><div><div class="name">${def.name}</div><div class="cost">${costText(def.cost)}</div></div>`;
-    b.onclick = () => {
-      playSfx('click'); S.buildType = S.buildType === type ? null : type; S.bridgeMode = false;
-      updateModeHint(); renderPanel();
-    };
-    grid.appendChild(b);
-  }
-  el.appendChild(grid);
-
-  el.appendChild(h('<div style="margin-top:8px"></div>'));
-  el.appendChild(btn(S.bridgeMode ? '❌ Brückenbau beenden' : '🌉 Brücke über Wasser (🪵50)', () => {
-    S.bridgeMode = !S.bridgeMode; S.buildType = null; updateModeHint(); renderPanel();
-  }, `btn small${S.bridgeMode ? ' active' : ''}`));
 }
 
 function panelArmy(el) {
   const me = S.me, hasBarracks = countType('barracks') > 0;
-  el.appendChild(h(`<h3>🛡️ Truppen (${totalArmyCount()}/${armyCap()})</h3>${hasBarracks ? '' : '<p class="muted">⚠️ Baue zuerst eine <b>⚔️ Kaserne</b> unter Bauen.</p>'}`));
+  el.appendChild(h(`<h3>⚔️ Rekrutierung (👷 ${fmt(me.population)}/${popCap()})</h3>${hasBarracks ? '' : '<p class="muted">⚠️ Baue zuerst eine <b>⚔️ Kaserne</b> in einer Provinz!</p>'}`));
   for (const [type, u] of Object.entries(UNITS)) {
     if (type === 'king') continue;
     const locked = me.age < u.age;
     const needBld = (type === 'ship' || type === 'warship') ? countType('harbor') === 0 : !hasBarracks;
     const row = document.createElement('div'); row.className = 'army-row';
     const total = Object.fromEntries(Object.entries(u.cost).map(([k, v]) => [k, v * BATCH]));
-    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(type, me.color), 'u' + type + me.color)}" alt=""><div class="grow"><b>${u.name}</b> · ⚔️${u.power} · ⏳${u.trainTime}s<br><span class="muted">${costText(total)}${u.note ? ' · ' + u.note : ''}${locked ? ' · 🔒 ' + AGE_NAMES[u.age] : ''}</span></div>`;
+    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(type, me.color), 'u' + type + me.color)}" alt=""><div class="grow"><b>${u.name}</b> · ⚔️${u.power} · ⏳${u.trainTime}s<br><span class="muted">${costText(total)} + ${BATCH}👷${u.note ? ' · ' + u.note : ''}${locked ? ' · 🔒 ' + AGE_NAMES[u.age] : ''}</span></div>`;
     row.appendChild(btn('+5', () => trainUnits(type), 'btn small primary', needBld || locked));
     el.appendChild(row);
   }
@@ -2146,7 +2223,7 @@ function panelArmy(el) {
   el.appendChild(btn(S.frontPush ? '⏸️ Angriff pausieren' : '▶️ Angriff starten', () => {
     S.frontPush = !S.frontPush;
     playSfx('horn');
-    toast(S.frontPush ? '⚔️ HOI4-Angriff gestartet! Frontlinie rückt vor.' : '⏸️ Front-Angriff pausiert.', 'ok');
+    toast(S.frontPush ? '⚔️ HOI4-Angriff gestartet! Frontlinie rückt Provinz-zu-Provinz vor.' : '⏸️ Front-Angriff pausiert.', 'ok');
     renderPanel();
   }, `btn small${S.frontPush ? ' danger' : ' gold'}`));
   el.appendChild(btn('✈️ Aufklärung 30s (35💰)', async () => {
@@ -2165,14 +2242,19 @@ function panelArmy(el) {
     }
     el.appendChild(qbox);
   }
-  el.appendChild(h('<h3>⚔️ Deine Armeen</h3><p class="muted">Armee antippen → Provinz antippen zum Erobern.</p>'));
+  el.appendChild(h('<h3>⚔️ Deine Armeen</h3><p class="muted">Armee wählen → Provinz antippen (Provinz-zu-Provinz).</p>'));
   const mine = S.armies.filter((a) => a.player_id === me.id);
   if (!mine.length) el.appendChild(h('<p class="muted">Keine Armeen.</p>'));
   for (const a of mine) {
     const p = armyPos(a);
+    const pid = S.provOf && M.inBounds(a.x, a.y) ? S.provOf[M.idx(a.x, a.y)] : -1;
+    const pName = pid >= 0 && S.provinces[pid] ? provName(S.provinces[pid]) : `(${a.x},${a.y})`;
     const row = document.createElement('div'); row.className = `army-row${a.id === S.selectedArmyId ? ' sel' : ''}`;
     const eta = a.arrives_at ? Math.max(0, Math.ceil((new Date(a.arrives_at).getTime() - now()) / 1000)) : 0;
-    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(a.unit_type, me.color), 'u' + a.unit_type + me.color)}" alt=""><div class="grow"><b>${a.count}× ${UNITS[a.unit_type]?.name || a.unit_type}</b><br><span class="muted">${p.moving ? `🚶 → (${a.target_x},${a.target_y}) ${eta}s` : `📍 (${a.x},${a.y})`}</span></div>`;
+    const statusTxt = a.target_x != null
+      ? (a.arrives_at ? `🚶 → ${eta}s` : '⚔️ In HOI4-Schlacht!')
+      : `📍 ${esc(pName)}`;
+    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(a.unit_type, me.color), 'u' + a.unit_type + me.color)}" alt=""><div class="grow"><b>${a.count}× ${UNITS[a.unit_type]?.name || a.unit_type}</b><br><span class="muted">${statusTxt}</span></div>`;
     row.appendChild(btn(a.id === S.selectedArmyId ? '✔' : 'Wählen', () => {
       S.selectedArmyId = a.id === S.selectedArmyId ? null : a.id;
       S.camW.x = p.x * TILE - $('game-canvas').width / 2 / S.camW.z;
@@ -2180,7 +2262,7 @@ function panelArmy(el) {
       updateModeHint(); renderPanel();
     }, 'btn small', false));
     el.appendChild(row);
-    if (a.id === S.selectedArmyId && !p.moving) {
+    if (a.id === S.selectedArmyId && a.target_x == null) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginBottom = '8px';
       actions.appendChild(btn('✂️ Teilen', () => splitArmy(a), 'btn small', a.count < 2));
       actions.appendChild(btn('🔗 Vereinen', () => mergeArmies(a)));
@@ -2256,19 +2338,6 @@ function panelDiplo(el) {
   form.onsubmit = (e) => { e.preventDefault(); setAlliance($('ally-input').value); };
   allyBox.firstChild.appendChild(form); el.appendChild(allyBox);
 
-  const hasMarket = countType('market') > 0;
-  const mk = h(`<div class="info-box"><h3>⚖️ Marktplatz</h3>${hasMarket ? '<p class="muted">100 Waren → 35💰 oder 50💰 → 100 Waren.</p>' : '<p class="muted">Baue einen <b>⚖️ Marktplatz</b> zum Handeln.</p>'}</div>`);
-  if (hasMarket) {
-    for (const r of ['wood', 'raw_food']) {
-      const row = document.createElement('div'); row.className = 'row'; row.style.margin = '4px 0';
-      row.appendChild(h(`<span style="width:75px;display:inline-block">${RES_ICON[r]} ${RES_NAME[r]}</span>`));
-      row.appendChild(btn('Verkaufen', async () => { if (await spend({ [r]: 100 })) { await rpcAdd(me.id, { gold: 35 }, true); me.gold += 35; playSfx('coins'); } }));
-      row.appendChild(btn('Kaufen', async () => { if (await spend({ gold: 50 })) { await rpcAdd(me.id, { [r]: 100 }, true); me[r] += 100; playSfx('coins'); } }));
-      mk.firstChild.appendChild(row);
-    }
-  }
-  el.appendChild(mk);
-
   el.appendChild(h('<h3>👑 Königreiche (Ziel: 70%)</h3>'));
   for (const p of [...S.players].sort((a, b) => (b.territory_percent || 0) - (a.territory_percent || 0))) {
     const isMe = p.id === me.id, ally = !isMe && allied(p.id, me.id);
@@ -2307,10 +2376,8 @@ function panelDiplo(el) {
           toast(`🕊️ Tribut-Forderung an ${p.kingdom_name} gesendet!`, 'ok');
         }, 'btn small'));
       }
-      const sel = document.createElement('select'); sel.style.width = '80px'; sel.style.display = 'inline-block';
-      sel.innerHTML = ['wood', 'gold', 'raw_food'].map((r) => `<option value="${r}">${RES_ICON[r]}</option>`).join('');
       const amt = document.createElement('input'); amt.type = 'number'; amt.value = '50'; amt.min = '1'; amt.style.width = '70px'; amt.style.display = 'inline-block';
-      actions.append(sel, amt, btn('📦 Senden', () => sendResources(p, sel.value, Number(amt.value))));
+      actions.append(amt, btn('💰 Gold senden', () => sendResources(p, 'gold', Number(amt.value))));
       box.appendChild(actions);
     }
     el.appendChild(box);
