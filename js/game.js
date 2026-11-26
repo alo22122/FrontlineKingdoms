@@ -26,22 +26,22 @@ const RES_NAME = { gold: 'Gold' };
 
 // Control-Europe-Stil: Jede Provinz kann direkt ausgebaut werden (einzige Währung: Gold)
 const BUILDINGS = {
-  house:    { name: 'Haus',       cost: { gold: 30 }, buildTime: 6,  desc: '+15 Arbeitskraft-Limit (für neue Truppen).' },
-  market:   { name: 'Marktplatz', cost: { gold: 40 }, buildTime: 8,  desc: '+2.5 💰 Gold/Sek. in dieser Provinz (2× auf Gold-Land).' },
-  fort:     { name: 'Festung',    cost: { gold: 50 }, buildTime: 10, desc: '+60 Provinz-Verteidigung & +25% Kampfbonus.' },
-  barracks: { name: 'Kaserne',    cost: { gold: 45 }, buildTime: 8,  desc: 'Ermöglicht Truppen-Rekrutierung in dieser Provinz.' },
-  harbor:   { name: 'Hafen',      cost: { gold: 55 }, buildTime: 10, desc: 'Nur Küste: +3.5 💰 Gold/Sek. & Schiffe bauen.' }
+  house:    { name: 'Haus',       cost: { gold: 35 }, buildTime: 6,  desc: '+15 Arbeitskraft-Limit (für neue Truppen).' },
+  market:   { name: 'Marktplatz', cost: { gold: 50 }, buildTime: 8,  desc: '+2.0 💰 Gold/Sek. in dieser Provinz (2× auf Gold-Land).' },
+  fort:     { name: 'Festung',    cost: { gold: 60 }, buildTime: 10, desc: '+80 Provinz-Verteidigung & +25% Kampfbonus.' },
+  barracks: { name: 'Kaserne',    cost: { gold: 50 }, buildTime: 8,  desc: 'Ermöglicht Truppen-Rekrutierung in dieser Provinz.' },
+  harbor:   { name: 'Hafen',      cost: { gold: 65 }, buildTime: 10, desc: 'Nur Küste: +3.0 💰 Gold/Sek. & Schiffe bauen.' }
 };
 
 const UNITS = {
-  swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.4, trainTime: 6,  cost: { gold: 6 } },
-  archer:    { name: 'Bogenschütze',   age: 2, power: 12, speed: 1.4, trainTime: 8,  cost: { gold: 9 }, note: '+50% auf Hügeln' },
-  ship:      { name: 'Schiff',         age: 2, power: 8,  speed: 1.0, trainTime: 10, cost: { gold: 14 }, note: 'Startet im Hafen' },
-  warship:   { name: 'Kriegsschiff',   age: 3, power: 26, speed: 1.1, trainTime: 14, cost: { gold: 28 }, note: 'Stark auf See' },
-  spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.8, trainTime: 8,  cost: { gold: 10 }, note: 'Späht Gegner aus' },
-  knight:    { name: 'Ritter',         age: 3, power: 24, speed: 1.0, trainTime: 12, cost: { gold: 18 } },
-  catapult:  { name: 'Katapult',       age: 4, power: 38, speed: 2.0, trainTime: 16, cost: { gold: 26 }, note: 'Schwächt Festungen' },
-  king:      { name: 'König',          age: 9, power: 35, speed: 1.2, trainTime: 0,  cost: {}, note: '+25% Kraft im Umkreis' }
+  swordsman: { name: 'Schwertkämpfer', age: 1, power: 10, speed: 1.3, trainTime: 7,  cost: { gold: 8 } },
+  archer:    { name: 'Bogenschütze',   age: 2, power: 13, speed: 1.3, trainTime: 9,  cost: { gold: 11 }, note: '+50% auf Hügeln' },
+  ship:      { name: 'Schiff',         age: 2, power: 12, speed: 1.0, trainTime: 10, cost: { gold: 16 }, note: 'Startet im Hafen' },
+  warship:   { name: 'Kriegsschiff',   age: 3, power: 30, speed: 1.1, trainTime: 14, cost: { gold: 32 }, note: 'Stark auf See' },
+  spy:       { name: 'Spion',          age: 2, power: 1,  speed: 0.7, trainTime: 8,  cost: { gold: 12 }, note: 'Späht Gegner aus' },
+  knight:    { name: 'Ritter',         age: 3, power: 26, speed: 0.9, trainTime: 13, cost: { gold: 20 } },
+  catapult:  { name: 'Katapult',       age: 4, power: 42, speed: 1.8, trainTime: 17, cost: { gold: 30 }, note: '2.5× gegen Festungen' },
+  king:      { name: 'König',          age: 9, power: 35, speed: 1.1, trainTime: 0,  cost: {}, note: '+25% Kraft im Umkreis' }
 };
 const BATCH = 5;
 
@@ -65,7 +65,7 @@ const S = {
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
   reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {},
-  armyRoutes: {}, provHp: {}
+  armyRoutes: {}, provHp: {}, armyVis: {}
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -605,8 +605,8 @@ async function startMatch() {
       }
     }
     await sb.from('match_players').update({
-      capital_x: cx, capital_y: cy, wood: 0, stone: 0, gold: 250, raw_food: 0, bread: 0,
-      morale: 85, population: 20, age: 1, is_eliminated: false, territory_percent: 0
+      capital_x: cx, capital_y: cy, wood: 0, stone: 0, gold: 300, raw_food: 0, bread: 0,
+      morale: 85, population: 25, age: 1, is_eliminated: false, territory_percent: 0
     }).eq('id', p.id);
     armyRows.push(
       { match_id: S.match.id, player_id: p.id, unit_type: 'swordsman', count: 10, x: cx, y: cy },
@@ -719,29 +719,29 @@ function provBuildings(pid) {
 }
 function provDefense(pid) {
   const prov = S.provinces?.[pid];
-  if (!prov) return 60;
+  if (!prov) return 80;
   const ownerSlot = S.territory[M.idx(prov.cx, prov.cy)];
   const ownerP = ownerSlot >= 0 ? playerBySlot(ownerSlot) : null;
   if (!ownerP) {
     const t = S.terrain[M.idx(prov.cx, prov.cy)];
-    return t === M.T.GOLD ? 90 : (t === M.T.HILL || t === M.T.FOREST) ? 75 : 60;
+    return t === M.T.GOLD ? 120 : (t === M.T.HILL || t === M.T.FOREST) ? 100 : 80;
   }
   const blds = provBuildings(pid);
   const forts = blds.filter((b) => b.type === 'fort').length;
   const guardBonus = S.match?.prov_guards?.[pid] || 0;
   const isCap = ownerP.capital_x === prov.cx && ownerP.capital_y === prov.cy;
-  const capBonus = isCap ? ((ownerP.capital_level || 1) * 50) : 0;
-  return 90 + forts * 60 + guardBonus + capBonus;
+  const capBonus = isCap ? ((ownerP.capital_level || 1) * 70) : 0;
+  return 110 + forts * 80 + guardBonus + capBonus;
 }
 function provGoldRate(pid) {
   const prov = S.provinces?.[pid];
   if (!prov || prov.isSea) return 0;
   const blds = provBuildings(pid);
   const isGoldTile = S.terrain && S.terrain[M.idx(prov.cx, prov.cy)] === M.T.GOLD;
-  let g = 0.4 + (prov.goldBonus ? 0.5 : 0);
+  let g = 0.35 + (prov.goldBonus ? 0.5 : 0);
   for (const b of blds) {
-    if (b.type === 'market') g += isGoldTile ? 5.0 : 2.5;
-    if (b.type === 'harbor') g += 3.5;
+    if (b.type === 'market') g += isGoldTile ? 4.0 : 2.0;
+    if (b.type === 'harbor') g += 3.0;
   }
   return g;
 }
@@ -1065,7 +1065,7 @@ async function trainUnits(type) {
 
 function travelMs(unitType, x0, y0, x1, y1) {
   const winterMult = S.match?.season === 'winter' ? 1.2 : 1;
-  return (Math.max(12, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.4) * 260 * winterMult) / speed();
+  return (Math.max(14, Math.hypot(x1 - x0, y1 - y0)) * (UNITS[unitType]?.speed || 1.3) * 650 * winterMult) / speed();
 }
 
 function armyPos(a) {
@@ -1305,28 +1305,30 @@ async function runCombatTick(pvp) {
     addFx('boom', bx, by, { dur: 650 });
 
     const totalAttCount = attackers.reduce((s, a) => s + a.count, 0);
-    const attLossTotal = Math.max(1, Math.round(totalAttCount * clamp((defPow / Math.max(1, attPow)) * 0.14, 0.04, 0.25)));
-    let remLoss = attLossTotal;
-    for (const a of attackers) {
-      if (remLoss <= 0) break;
-      const take = Math.min(a.count, Math.max(1, Math.round((a.count / Math.max(1, totalAttCount)) * attLossTotal)));
-      a.count -= take; remLoss -= take;
-      if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
+    const attLossTotal = Math.max(0, Math.round(totalAttCount * clamp((defPow / Math.max(1, attPow)) * 0.055, 0.015, 0.085)));
+    if (attLossTotal > 0) {
+      let remLoss = attLossTotal;
+      for (const a of attackers) {
+        if (remLoss <= 0) break;
+        const take = Math.min(a.count, Math.max(1, Math.round((a.count / Math.max(1, totalAttCount)) * attLossTotal)));
+        a.count -= take; remLoss -= take;
+        if (a.count <= 0) await deleteArmy(a); else await updateArmy(a, { count: a.count });
+      }
     }
 
     if (defenders.length > 0) {
       const totalDefCount = defenders.reduce((s, d) => s + d.count, 0);
-      const defLossTotal = Math.max(1, Math.round(totalDefCount * clamp((attPow / Math.max(1, defPow)) * 0.18, 0.06, 0.30)));
-      addFx('text', prov.cx, prov.cy, { label: `-${defLossTotal}`, color: '#ff6b6b', dur: 700 });
+      const defLossTotal = Math.max(1, Math.round(totalDefCount * clamp((attPow / Math.max(1, defPow)) * 0.065, 0.02, 0.095)));
+      addFx('text', prov.cx, prov.cy, { label: `-${defLossTotal}`, color: '#ff6b6b', dur: 850 });
       for (const d of defenders) {
         const take = Math.min(d.count, Math.max(1, Math.round((d.count / Math.max(1, totalDefCount)) * defLossTotal)));
         d.count -= take;
         if (d.count <= 0) await deleteArmy(d); else await updateArmy(d, { count: d.count });
       }
     } else {
-      const wallDmg = Math.max(12, Math.round((attPow / Math.max(20, defPow)) * (hasCatapult ? 45 : 24)));
+      const wallDmg = Math.max(6, Math.round((attPow / Math.max(25, defPow)) * (hasCatapult ? 24 : 11)));
       S.provHp[tpid] = Math.max(0, S.provHp[tpid] - wallDmg);
-      addFx('text', prov.cx, prov.cy, { label: `🛡️-${wallDmg}`, color: '#ffd23f', dur: 700 });
+      addFx('text', prov.cx, prov.cy, { label: `🛡️-${wallDmg}`, color: '#ffd23f', dur: 850 });
     }
 
     const aliveAtt = attackers.filter((a) => a.count > 0 && S.armies.includes(a));
@@ -1689,8 +1691,10 @@ function render() {
     ctx.beginPath(); ctx.arc(ping.x * TILE + TILE / 2, ping.y * TILE + TILE / 2, r, 0, Math.PI * 2); ctx.stroke();
   }
 
-  // Armeen
-  ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+  // Armeen (immer groß & gut sichtbar, auch beim Herauszoomen, mit weicher Bewegung)
+  const uSize = Math.max(TILE * 1.5, Math.min(54, 28 / z));
+  const fSize = Math.max(7, Math.round(11 / z));
+  ctx.font = `bold ${fSize}px monospace`; ctx.textAlign = 'center';
   for (const a of S.armies) {
     if (!a.player_id) continue;
     const pos = armyPos(a), ix = Math.round(pos.x), iy = Math.round(pos.y);
@@ -1698,35 +1702,53 @@ function render() {
     const friendly = allied(a.player_id, S.me.id);
     const recon = S.reconUntil > tNow;
     if (!friendly && !recon && !S.visible[M.idx(ix, iy)]) continue;
+
+    // Weiche Interpolation gegen visuelles Teleportieren + Kampf-Vorstoß
+    const vis = S.armyVis[a.id] || { x: pos.x, y: pos.y };
+    const dist = Math.hypot(pos.x - vis.x, pos.y - vis.y);
+    if (dist > 35) { vis.x = pos.x; vis.y = pos.y; }
+    else { vis.x += (pos.x - vis.x) * 0.22; vis.y += (pos.y - vis.y) * 0.22; }
+    S.armyVis[a.id] = vis;
+
+    let vx = vis.x, vy = vis.y;
+    if (a.target_x != null && !a.arrives_at) {
+      const lunge = Math.max(0, Math.sin(tNow / 180)) * 2.4;
+      const ang = Math.atan2(a.target_y - a.y, a.target_x - a.x);
+      vx += Math.cos(ang) * lunge; vy += Math.sin(ang) * lunge;
+    }
+
     const owner = playerById(a.player_id);
     const sprite = getUnitSprite(a.unit_type, owner ? owner.color : '#888');
-    const px = pos.x * TILE, py = pos.y * TILE + (pos.moving ? Math.sin(tNow / 120) * 0.8 : 0);
+    const cx = vx * TILE + TILE / 2, cy = vy * TILE + TILE / 2 + (pos.moving ? Math.sin(tNow / 120) * 1.2 : 0);
+    const px = cx - uSize / 2, py = cy - uSize / 2;
+
     if (friendly && pos.moving) {
-      ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 0.6; ctx.setLineDash([2, 2]);
-      ctx.beginPath(); ctx.moveTo(px + TILE / 2, py + TILE / 2); ctx.lineTo(a.target_x * TILE + TILE / 2, a.target_y * TILE + TILE / 2); ctx.stroke();
+      ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = Math.max(1.2, 2 / z); ctx.setLineDash([4 / z, 3 / z]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(a.target_x * TILE + TILE / 2, a.target_y * TILE + TILE / 2); ctx.stroke();
       ctx.setLineDash([]);
     } else if (!friendly && pos.moving && M.inBounds(a.target_x, a.target_y) && S.territory[M.idx(a.target_x, a.target_y)] === S.me.slot) {
-      ctx.strokeStyle = `rgba(255, 70, 70, ${0.5 + 0.4 * Math.sin(tNow / 150)})`; ctx.lineWidth = 1.2; ctx.setLineDash([3, 2]);
-      ctx.beginPath(); ctx.moveTo(px + TILE / 2, py + TILE / 2); ctx.lineTo(a.target_x * TILE + TILE / 2, a.target_y * TILE + TILE / 2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 70, 70, ${0.55 + 0.4 * Math.sin(tNow / 150)})`; ctx.lineWidth = Math.max(1.5, 2.5 / z); ctx.setLineDash([4 / z, 3 / z]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(a.target_x * TILE + TILE / 2, a.target_y * TILE + TILE / 2); ctx.stroke();
       ctx.setLineDash([]);
     }
     if (a.unit_type === 'king') {
-      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(px + TILE / 2, py + TILE / 2, TILE * 0.7, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = Math.max(1.2, 2 / z);
+      ctx.beginPath(); ctx.arc(cx, cy, uSize * 0.65, 0, Math.PI * 2); ctx.stroke();
     }
     if (a.id === S.selectedArmyId) {
-      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.4; ctx.strokeRect(px, py, TILE, TILE);
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = Math.max(1.6, 2.6 / z);
+      ctx.strokeRect(px - 2 / z, py - 2 / z, uSize + 4 / z, uSize + 4 / z);
       // Zeige erreichbare Nachbar-Provinzen (Provinz-zu-Provinz Bewegung)
       const curPid = S.provOf && M.inBounds(a.x, a.y) ? S.provOf[M.idx(a.x, a.y)] : -1;
       const curPr = curPid >= 0 ? S.provinces[curPid] : null;
       if (curPr) {
-        ctx.strokeStyle = 'rgba(255, 220, 90, 0.45)'; ctx.lineWidth = 1.1; ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(255, 220, 90, 0.55)'; ctx.lineWidth = Math.max(1.2, 2 / z); ctx.setLineDash([4 / z, 4 / z]);
         for (const nid of curPr.adj) {
           const nb = S.provinces[nid];
           if (!nb) continue;
           ctx.beginPath(); ctx.moveTo(curPr.cx * TILE + TILE / 2, curPr.cy * TILE + TILE / 2);
           ctx.lineTo(nb.cx * TILE + TILE / 2, nb.cy * TILE + TILE / 2); ctx.stroke();
-          ctx.beginPath(); ctx.arc(nb.cx * TILE + TILE / 2, nb.cy * TILE + TILE / 2, 5, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(nb.cx * TILE + TILE / 2, nb.cy * TILE + TILE / 2, Math.max(6, 9 / z), 0, Math.PI * 2); ctx.stroke();
         }
         ctx.setLineDash([]);
       }
@@ -1734,25 +1756,30 @@ function render() {
     // HOI4-Angriffspfeil für aktiv kämpfende Armeen (arrives_at == null && target_x != null)
     if (a.target_x != null && !a.arrives_at) {
       const txp = a.target_x * TILE + TILE / 2, typ = a.target_y * TILE + TILE / 2;
-      ctx.strokeStyle = 'rgba(255, 70, 70, 0.85)'; ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.moveTo(px + TILE / 2, py + TILE / 2); ctx.lineTo(txp, typ); ctx.stroke();
-      const ang = Math.atan2(typ - (py + TILE / 2), txp - (px + TILE / 2));
+      ctx.strokeStyle = 'rgba(255, 65, 65, 0.9)'; ctx.lineWidth = Math.max(2.4, 3.8 / z);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(txp, typ); ctx.stroke();
+      const ang = Math.atan2(typ - cy, txp - cx);
+      const headLen = Math.max(7, 11 / z);
       ctx.fillStyle = '#ff4646';
       ctx.beginPath(); ctx.moveTo(txp, typ);
-      ctx.lineTo(txp - 7 * Math.cos(ang - 0.5), typ - 7 * Math.sin(ang - 0.5));
-      ctx.lineTo(txp - 7 * Math.cos(ang + 0.5), typ - 7 * Math.sin(ang + 0.5));
+      ctx.lineTo(txp - headLen * Math.cos(ang - 0.5), typ - headLen * Math.sin(ang - 0.5));
+      ctx.lineTo(txp - headLen * Math.cos(ang + 0.5), typ - headLen * Math.sin(ang + 0.5));
       ctx.closePath(); ctx.fill();
     }
-    ctx.drawImage(sprite, px, py, TILE, TILE);
+    ctx.drawImage(sprite, px, py, uSize, uSize);
     const rank = S.armyRanks[a.id] || 0;
     const badge = (rank >= 2 ? '⭐⭐' : rank === 1 ? '⭐' : '') + ((S.entrench[a.id] || 0) >= 8 ? '🛡️' : '');
-    if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, px + TILE / 2, py - 2); }
-    ctx.fillStyle = '#000c'; ctx.fillRect(px + TILE / 2 - 6, py + TILE - 5, 12, 6);
-    ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), px + TILE / 2, py + TILE);
+    if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, cx, py - 2 / z); }
+    const bw = Math.max(16, uSize * 0.8), bh = fSize + 3 / z;
+    ctx.fillStyle = '#000d'; ctx.fillRect(cx - bw / 2, py + uSize - bh * 0.4, bw, bh);
+    ctx.strokeStyle = owner ? owner.color : '#fff'; ctx.lineWidth = Math.max(0.8, 1.2 / z);
+    ctx.strokeRect(cx - bw / 2, py + uSize - bh * 0.4, bw, bh);
+    ctx.fillStyle = '#fff'; ctx.fillText(String(a.count), cx, py + uSize + bh * 0.45);
   }
 
-  // HOI4 Battle Bubbles (🟢/🟡/🔴 %) für alle aktiven Provinz-Schlachten
+  // HOI4 Battle Bubbles (🟢/🟡/🔴 %) + Fortschrittsbalken & Schild-HP
   const seenBattles = new Set();
+  const bRad = Math.max(11, 16 / z);
   for (const a of S.armies) {
     if (!a.player_id || a.count <= 0 || a.target_x == null || a.arrives_at != null) continue;
     const tpid = S.provOf && M.inBounds(a.target_x, a.target_y) ? S.provOf[M.idx(a.target_x, a.target_y)] : -1;
@@ -1763,14 +1790,22 @@ function render() {
     const atts = S.armies.filter((x) => x.player_id && x.count > 0 && x.target_x === a.target_x && x.target_y === a.target_y && !x.arrives_at);
     const defs = S.armies.filter((d) => d.player_id && d.count > 0 && !d.target_x && S.provOf?.[M.idx(d.x, d.y)] === tpid && !allied(d.player_id, a.player_id));
     const ap = atts.reduce((s, x) => s + armyPower(x, x.x, x.y), 0);
-    const dp = defs.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + (S.provHp[tpid] ?? provDefense(tpid)) * 0.85;
+    const hp = Math.max(0, Math.round(S.provHp[tpid] ?? provDefense(tpid)));
+    const dp = defs.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + hp * 0.85;
     const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
     const bx = ((a.x + prov.cx) / 2) * TILE + TILE / 2, by = ((a.y + prov.cy) / 2) * TILE;
+    // Kampf-Blase
     ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
-    ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(String(pct), bx, by + 2.5);
+    ctx.beginPath(); ctx.arc(bx, by, bRad, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.2, 2 / z); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(8, Math.round(12 / z))}px monospace`; ctx.textAlign = 'center';
+    ctx.fillText(`${pct}%`, bx, by + 3 / z);
+    // HOI4 Fortschrittsbalken + Verteidigungs-HP unter der Blase
+    const barW = bRad * 2.4, barH = Math.max(3, 4 / z);
+    ctx.fillStyle = '#c93b32'; ctx.fillRect(bx - barW / 2, by + bRad + 2 / z, barW, barH);
+    ctx.fillStyle = '#2e9e44'; ctx.fillRect(bx - barW / 2, by + bRad + 2 / z, barW * (pct / 100), barH);
+    ctx.fillStyle = '#ffd23f'; ctx.font = `bold ${Math.max(6, Math.round(9 / z))}px monospace`;
+    ctx.fillText(`🛡️${hp}`, bx, by + bRad + barH + Math.max(8, 10 / z));
   }
 
   if (S.selectedProvId >= 0 && S.provinces[S.selectedProvId]) {
@@ -1893,7 +1928,7 @@ function bindCanvas() {
     const d = S.drag; S.drag = null;
     if (!d || d.moved) return;
     const p = pos(e);
-    onCanvasClick(screenToTile(p.mx, p.my));
+    onCanvasClick(screenToTile(p.mx, p.my), p);
   });
   c.addEventListener('pointercancel', endPtr);
   c.addEventListener('pointerleave', () => { S.hoverTile = null; });
@@ -1995,7 +2030,7 @@ async function gatherAllArmies() {
   renderPanel();
 }
 
-function onCanvasClick(t) {
+function onCanvasClick(t, screenPt = null) {
   if (!S.me || !S.match || !M.inBounds(t.x, t.y)) return;
   const pid = S.provOf ? S.provOf[M.idx(t.x, t.y)] : -1;
   if (S.frontlineMode) {
@@ -2006,21 +2041,39 @@ function onCanvasClick(t) {
     updateModeHint(); renderPanel(); return;
   }
 
-  const own = S.armies.find((a) => {
-    if (a.player_id !== S.me.id || a.id === S.selectedArmyId) return false;
-    const pos = armyPos(a);
-    return Math.hypot(pos.x - t.x, pos.y - t.y) <= 2.2;
-  });
+  // Bildschirm-basierte Treffererkennung (funktioniert bei jedem Zoom!)
+  let own = null, bestD = 30;
+  for (const a of S.armies) {
+    if (a.player_id !== S.me.id || a.id === S.selectedArmyId) continue;
+    const vis = S.armyVis[a.id] || armyPos(a);
+    if (screenPt) {
+      const sx = (vis.x * TILE + TILE / 2 - S.camW.x) * S.camW.z;
+      const sy = (vis.y * TILE + TILE / 2 - S.camW.y) * S.camW.z;
+      const d = Math.hypot(sx - screenPt.mx, sy - screenPt.my);
+      if (d <= bestD) { bestD = d; own = a; }
+    } else if (Math.hypot(vis.x - t.x, vis.y - t.y) <= 3.5) {
+      own = a; break;
+    }
+  }
+
   const sel = S.armies.find((a) => a.id === S.selectedArmyId);
   if (sel) {
-    if (own && S.provOf?.[M.idx(own.x, own.y)] === S.provOf?.[M.idx(sel.x, sel.y)]) {
-      S.selectedArmyId = own.id; return renderPanel();
+    const selPid = S.provOf ? S.provOf[M.idx(sel.x, sel.y)] : -1;
+    if (pid === selPid) {
+      if (own && S.provOf?.[M.idx(own.x, own.y)] === selPid) {
+        S.selectedArmyId = own.id; playSfx('click'); updateModeHint(); renderPanel(); return;
+      }
+      S.selectedArmyId = null; updateModeHint(); renderPanel(); return;
     }
     moveArmy(sel, t.x, t.y); return;
   }
-  if (own && S.activeTab === 'army') {
-    S.selectedArmyId = own.id; playSfx('click');
-    updateModeHint(); renderPanel(); return;
+
+  if (own) {
+    S.selectedArmyId = own.id;
+    if (pid >= 0) S.selectedProvId = pid;
+    S.selectedTile = t;
+    playSfx('click');
+    updateModeHint(); updateTileBar(); renderPanel(); return;
   }
 
   S.selectedTile = t;
@@ -2052,6 +2105,16 @@ function updateTileBar() {
     bar.appendChild(btn('🔨 Ausbauen', () => { S.selectedProvId = pid; setActiveTab('build'); }, 'btn small primary'));
     bar.appendChild(btn('🛡️ +50 (40💰)', () => reinforceProvince(pid), 'btn small gold'));
     bar.appendChild(btn('✏️ Name', () => renameProvince(pid), 'btn small'));
+  }
+  // Zeige stationierte eigene Armeen in dieser Provinz zum leichten Auswählen
+  if (pid >= 0 && S.me) {
+    const here = S.armies.filter((a) => a.player_id === S.me.id && S.provOf?.[M.idx(a.x, a.y)] === pid);
+    for (const a of here) {
+      bar.appendChild(btn(`⚔️ ${a.count}× ${UNITS[a.unit_type]?.name || ''}`, () => {
+        S.selectedArmyId = S.selectedArmyId === a.id ? null : a.id;
+        updateModeHint(); updateTileBar(); renderPanel();
+      }, `btn small${S.selectedArmyId === a.id ? ' gold' : ''}`));
+    }
   }
   bar.appendChild(btn('📍 Ping', () => sendPing(x, y), 'btn small'));
   bar.hidden = false;
