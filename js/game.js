@@ -717,7 +717,7 @@ function updateHud() {
   $('res-gold').textContent = `${fmt(me.gold)} (+${d.gold.toFixed(1)}/s)`;
   $('res-pop').textContent = `${fmt(me.population)}/${popCap()}`;
   $('res-territory').textContent = `${(me.territory_percent || 0).toFixed(1)}%`;
-  $('res-age').textContent = `🏛️ ${AGE_NAMES[me.age]}`;
+  $('res-age').textContent = `🔬 Tech: ${Object.values(getPlayerTech(me)).reduce((s, v) => s + v, 0)}`;
   $('res-season').textContent = `${S.match.season === 'winter' ? '❄️ Winter' : '☀️ Sommer'} · ${speed()}x`;
 }
 
@@ -770,11 +770,40 @@ function isCoastalProv(pid) {
   return prov.adj.some((nid) => S.provinces[nid]?.isSea);
 }
 
+const TECHS = {
+  atk:      { name: '⚔️ Scharfe Klingen',  max: 5, baseCost: 120, step: 90,  desc: '+10% Angriffskraft pro Stufe für alle Truppen.' },
+  def:      { name: '🛡️ Eisenrüstung',     max: 5, baseCost: 120, step: 90,  desc: '+10% Verteidigung pro Stufe in eigenen Provinzen.' },
+  eco:      { name: '💰 Steuerrecht',      max: 4, baseCost: 140, step: 110, desc: '+15% Gold-Einkommen pro Stufe.' },
+  archer:   { name: '🏹 Bogenschießen',    max: 1, baseCost: 150, step: 0,   desc: 'Schaltet Bogenschützen frei.' },
+  knight:   { name: '🐎 Rittertum',        max: 1, baseCost: 300, step: 0,   desc: 'Schaltet Ritter frei.' },
+  naval:    { name: '⛵ Schiffsbau',       max: 1, baseCost: 220, step: 0,   desc: 'Schaltet Schiffe & Kriegsschiffe frei.' },
+  catapult: { name: '💣 Belagerungskunst', max: 1, baseCost: 420, step: 0,   desc: 'Schaltet Katapulte frei (2.5× gegen Festungen).' },
+  spy:      { name: '🕵️ Spionagenetz',     max: 1, baseCost: 180, step: 0,   desc: 'Schaltet Spione frei.' }
+};
+const UNIT_TECH = { archer: 'archer', knight: 'knight', ship: 'naval', warship: 'naval', catapult: 'catapult', spy: 'spy' };
+
+function getPlayerTech(p = S.me) {
+  if (!p) return {};
+  return S.match?.prov_guards?.['tech_' + p.id] || {};
+}
+function hasUnitTech(unitType, p = S.me) {
+  const req = UNIT_TECH[unitType];
+  if (!req) return true;
+  return (getPlayerTech(p)[req] || 0) >= 1;
+}
+function buildingCost(type) {
+  const def = BUILDINGS[type];
+  if (!def) return { gold: 50 };
+  const owned = S.buildings.filter((b) => b.player_id === S.me?.id && b.type === type).length;
+  return { gold: Math.round((def.cost.gold || 30) * Math.pow(1.28, owned)) };
+}
+
 function estimateRates() {
   const me = S.me;
   if (!me) return { d: { gold: 0.5 }, mult: 1 };
   const capLv = me.capital_level || 1;
-  const mult = S.match?.season === 'winter' ? 0.85 : 1;
+  const techEco = 1 + (getPlayerTech(me).eco || 0) * 0.15;
+  const mult = (S.match?.season === 'winter' ? 0.85 : 1) * techEco;
   let gold = 1.0 * capLv;
   for (const prov of S.provinces) {
     if (prov.isSea) continue;
@@ -1003,7 +1032,8 @@ async function buildInProvince(pid, type) {
   if (!def) return;
   const curCnt = provAllBuildings(pid).filter((b) => b.type === type).length;
   if (def.limit && curCnt >= def.limit) return toast(`Limit erreicht: Max. ${def.limit}× ${def.name} pro Provinz!`, 'err');
-  if (!(await spend(def.cost))) return;
+  const cost = buildingCost(type);
+  if (!(await spend(cost))) return;
 
   // Freies Land-Feld in der Nähe des Provinz-Zentrums (nicht direkt auf der Burg) wählen
   const occupied = new Set(S.buildings.map((b) => M.idx(b.x, b.y)));
@@ -1023,7 +1053,7 @@ async function buildInProvince(pid, type) {
   const { data, error } = await sb.from('buildings')
     .insert({ match_id: S.match.id, player_id: S.me.id, layer: 'world', type, x: spot.tx, y: spot.ty, construction_end_at: endAt })
     .select().single();
-  if (error) { await rpcAdd(S.me.id, def.cost, true); return toast(error.message, 'err'); }
+  if (error) { await rpcAdd(S.me.id, cost, true); return toast(error.message, 'err'); }
   if (data) S.buildings.push(data);
   playSfx('build');
   toast(`✅ ${def.name} in „${provName(prov)}“ im Bau (${Math.ceil(def.buildTime / speed())}s)!`, 'ok');
@@ -1086,7 +1116,7 @@ async function trainUnits(type) {
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
   if ((type === 'ship' || type === 'warship') && countType('harbor') === 0) return toast('Schiffe brauchen einen fertigen ⚓ Hafen!', 'err');
   if (type !== 'ship' && type !== 'warship' && countType('barracks') === 0) return toast('Baue zuerst eine fertige ⚔️ Kaserne in einer Provinz!', 'err');
-  if (me.age < u.age) return toast(`Benötigt ${AGE_NAMES[u.age]}.`, 'err');
+  if (!hasUnitTech(type)) return toast(`Erforsche zuerst „${TECHS[UNIT_TECH[type]]?.name}“ im 🔬 Tech-Tab!`, 'err');
   if ((me.population || 0) < BATCH) return toast(`Nicht genug 👷 Arbeitskraft (${me.population}/${BATCH})! Baue mehr 🏠 Häuser.`, 'err');
   if (!(await spend(u.cost, BATCH))) return;
   me.population = Math.max(0, (me.population || 0) - BATCH);
@@ -1341,6 +1371,8 @@ function armyPower(a, x, y) {
   if (a.unit_type === 'archer' && tile === M.T.HILL) pw *= 1.5;
   const p = playerById(a.player_id);
   if (p) {
+    const t = getPlayerTech(p);
+    pw *= 1 + (t.atk || 0) * 0.1;
     pw *= 1 + Math.min(0.3, (S.armyRanks[a.id] || 0) * 0.15); // General-Rang
     if (a.target_x == null) pw *= 1 + Math.min(0.3, (S.entrench[a.id] || 0) * 0.02); // Eingraben
     if (p.id === S.me?.id && S.supplied && !S.supplied[M.idx(x, y)] && a.unit_type !== 'ship' && a.unit_type !== 'warship') {
@@ -1351,7 +1383,7 @@ function armyPower(a, x, y) {
     const pid = S.provOf && M.inBounds(x, y) ? S.provOf[M.idx(x, y)] : -1;
     if (pid >= 0 && S.territory[M.idx(x, y)] === p.slot) {
       const forts = provBuildings(pid).filter((b) => b.type === 'fort').length;
-      pw *= 1.15 + Math.min(0.75, forts * 0.25);
+      pw *= 1.15 + Math.min(0.5, forts * 0.25) + (t.def || 0) * 0.1;
     }
   }
   return pw;
@@ -2355,7 +2387,7 @@ function renderPanel() {
   if (!S.inGame || !S.me || S.activeTab === 'chat') return;
   const el = $('panel'), scroll = el.scrollTop;
   el.innerHTML = '';
-  const fn = { build: panelBuild, army: panelArmy, diplo: panelDiplo }[S.activeTab];
+  const fn = { build: panelBuild, army: panelArmy, tech: panelTech, diplo: panelDiplo }[S.activeTab];
   if (fn) fn(el);
   el.scrollTop = scroll;
 }
@@ -2438,11 +2470,12 @@ function panelBuild(el) {
       if (type === 'harbor' && !isCoastalProv(pid)) continue;
       const allCnt = provAllBuildings(pid).filter((b) => b.type === type).length;
       const atLimit = def.limit && allCnt >= def.limit;
-      const afford = (me.gold || 0) >= (def.cost.gold || 0);
+      const cost = buildingCost(type);
+      const afford = (me.gold || 0) >= (cost.gold || 0);
       const b = document.createElement('button');
       b.className = 'bcard';
       b.title = def.desc; b.disabled = !afford || atLimit;
-      b.innerHTML = `<img src="${spriteUrl(getBuildingSprite(type, me.color), 'b' + type + me.color)}" alt=""><div><div class="name">${def.name} (${allCnt}${def.limit ? '/' + def.limit : ''})</div><div class="cost">${atLimit ? 'Max' : costText(def.cost)}</div></div>`;
+      b.innerHTML = `<img src="${spriteUrl(getBuildingSprite(type, me.color), 'b' + type + me.color)}" alt=""><div><div class="name">${def.name} (${allCnt}${def.limit ? '/' + def.limit : ''})</div><div class="cost">${atLimit ? 'Max' : costText(cost)}</div></div>`;
       b.onclick = () => buildInProvince(pid, type);
       grid.appendChild(b);
     }
@@ -2455,17 +2488,43 @@ function panelBuild(el) {
   const capBox = h(`<div class="info-box" style="margin-top:8px"><h3>🏰 Hauptstadt (Stufe ${capLv}/3)</h3></div>`);
   if (capLv < 3) {
     const cCost = capLv === 1 ? { gold: 150 } : { gold: 350 };
-    capBox.firstChild.appendChild(h(`<p class="muted">+50 Verteidigung & +1💰/s (${costText(cCost)})</p>`));
+    capBox.firstChild.appendChild(h(`<p class="muted">+70 Verteidigung & +1💰/s (${costText(cCost)})</p>`));
     capBox.firstChild.appendChild(btn(`⬆️ Hauptstadt Stufe ${capLv + 1}`, upgradeCapital, 'btn small primary'));
   } else capBox.firstChild.appendChild(h('<p class="muted">Maximale Stufe erreicht!</p>'));
   el.appendChild(capBox);
+}
 
-  const ageBox = h(`<div class="info-box"><h3>🏛️ ${AGE_NAMES[me.age]}</h3></div>`);
-  if (me.age < 4) {
-    ageBox.firstChild.appendChild(h(`<p class="muted">Nächstes: <b>${AGE_NAMES[me.age + 1]}</b> (${costText(AGE_COST[me.age + 1])})</p>`));
-    ageBox.firstChild.appendChild(btn('⬆️ Zeitalter aufsteigen', ageUp, 'btn small gold'));
-  } else ageBox.firstChild.appendChild(h('<p class="muted">Höchstes Zeitalter erreicht!</p>'));
-  el.appendChild(ageBox);
+async function researchTech(key) {
+  if (!S.me || !S.match) return;
+  const def = TECHS[key];
+  const cur = getPlayerTech(S.me)[key] || 0;
+  if (!def || cur >= def.max) return;
+  const cost = def.baseCost + cur * def.step;
+  if (!(await spend({ gold: cost }))) return;
+  const t = { ...getPlayerTech(S.me), [key]: cur + 1 };
+  const guards = { ...(S.match.prov_guards || {}), ['tech_' + S.me.id]: t };
+  S.match.prov_guards = guards;
+  await sb.from('matches').update({ prov_guards: guards }).eq('id', S.match.id);
+  playSfx('horn');
+  toast(`🔬 ${def.name} (Stufe ${cur + 1}/${def.max}) erforscht!`, 'ok');
+  renderPanel();
+}
+
+function panelTech(el) {
+  const me = S.me, t = getPlayerTech(me);
+  el.appendChild(h(`<div class="info-box"><h3>🔬 Technologie-Forschung</h3><p class="muted">Erforsche stärkere Waffen, Rüstungen, mehr Steuern und neue Truppentypen mit 💰 Gold!</p></div>`));
+  for (const [key, def] of Object.entries(TECHS)) {
+    const cur = t[key] || 0;
+    const done = cur >= def.max;
+    const cost = def.baseCost + cur * def.step;
+    const box = document.createElement('div');
+    box.className = 'info-box';
+    box.innerHTML = `<div class="stat"><b>${def.name}</b><b>${done ? '✅ Max' : `St. ${cur}/${def.max}`}</b></div><p class="muted">${def.desc}</p>`;
+    if (!done) {
+      box.appendChild(btn(`🔬 Erforschen (${cost}💰)`, () => researchTech(key), 'btn small primary', (me.gold || 0) < cost));
+    }
+    el.appendChild(box);
+  }
 }
 
 function panelArmy(el) {
@@ -2473,11 +2532,11 @@ function panelArmy(el) {
   el.appendChild(h(`<h3>⚔️ Rekrutierung (👷 ${fmt(me.population)}/${popCap()})</h3>${hasBarracks ? '' : '<p class="muted">⚠️ Baue zuerst eine <b>⚔️ Kaserne</b> in einer Provinz!</p>'}`));
   for (const [type, u] of Object.entries(UNITS)) {
     if (type === 'king') continue;
-    const locked = me.age < u.age;
+    const locked = !hasUnitTech(type);
     const needBld = (type === 'ship' || type === 'warship') ? countType('harbor') === 0 : !hasBarracks;
     const row = document.createElement('div'); row.className = 'army-row';
     const total = Object.fromEntries(Object.entries(u.cost).map(([k, v]) => [k, v * BATCH]));
-    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(type, me.color), 'u' + type + me.color)}" alt=""><div class="grow"><b>${u.name}</b> · ⚔️${u.power} · ⏳${u.trainTime}s<br><span class="muted">${costText(total)} + ${BATCH}👷${u.note ? ' · ' + u.note : ''}${locked ? ' · 🔒 ' + AGE_NAMES[u.age] : ''}</span></div>`;
+    row.innerHTML = `<img src="${spriteUrl(getUnitSprite(type, me.color), 'u' + type + me.color)}" alt=""><div class="grow"><b>${u.name}</b> · ⚔️${u.power} · ⏳${u.trainTime}s<br><span class="muted">${costText(total)} + ${BATCH}👷${u.note ? ' · ' + u.note : ''}${locked ? ' · 🔒 ' + (TECHS[UNIT_TECH[type]]?.name || 'Tech') : ''}</span></div>`;
     row.appendChild(btn('+5', () => trainUnits(type), 'btn small primary', needBld || locked));
     el.appendChild(row);
   }
