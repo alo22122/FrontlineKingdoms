@@ -370,11 +370,75 @@ export function generateProvinces(terrain, seed, mapType = 'continents') {
     provinces.push({
       id: sc.id,
       name: k < SEA_NAMES.length ? SEA_NAMES[k] : `${SEA_NAMES[k % SEA_NAMES.length]} ${Math.floor(k / SEA_NAMES.length) + 1}`,
-      cx: sc.x, cy: sc.y, tiles: sc.tiles, goldBonus: 0, isSea: true
+      cx: sc.x, cy: sc.y, tiles: sc.tiles, goldBonus: 0, isSea: true, adj: []
     });
   }
 
+  // Nachbarschafts-Graph (Provinz-zu-Provinz Verbindungen + schmale Flussübergänge)
+  const adjSets = Array.from({ length: provinces.length }, () => new Set());
+  for (let i = 0; i < provinces.length; i++) if (!provinces[i].adj) provinces[i].adj = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p0 = provOf[idx(x, y)];
+      if (p0 < 0) continue;
+      if (x + 1 < W) {
+        const p1 = provOf[idx(x + 1, y)];
+        if (p1 >= 0 && p1 !== p0) { adjSets[p0].add(p1); adjSets[p1].add(p0); }
+      }
+      if (y + 1 < H) {
+        const p2 = provOf[idx(x, y + 1)];
+        if (p2 >= 0 && p2 !== p0) { adjSets[p0].add(p2); adjSets[p2].add(p0); }
+      }
+      // Schmale Flussübergänge (bis 3 Wasser-Tiles) zwischen Landprovinzen direkt verbinden
+      if (!provinces[p0].isSea) {
+        for (const [dx, dy] of [[1, 0], [0, 1]]) {
+          for (let step = 2; step <= 4; step++) {
+            const nx = x + dx * step, ny = y + dy * step;
+            if (!inBounds(nx, ny)) break;
+            const p3 = provOf[idx(nx, ny)];
+            if (p3 >= 0 && p3 !== p0 && !provinces[p3].isSea) {
+              adjSets[p0].add(p3); adjSets[p3].add(p0);
+              break;
+            }
+            if (isLand(terrain[idx(nx, ny)])) break;
+          }
+        }
+      }
+    }
+  }
+  for (let i = 0; i < provinces.length; i++) provinces[i].adj = [...adjSets[i]];
+
   return { provOf, provinces };
+}
+
+export function findProvPath(provinces, startId, goalId, canEnterFn = null) {
+  if (startId === goalId) return [startId];
+  if (startId < 0 || goalId < 0 || !provinces[startId] || !provinces[goalId]) return null;
+  const prev = new Int16Array(provinces.length).fill(-1);
+  const visited = new Uint8Array(provinces.length);
+  const q = [startId];
+  visited[startId] = 1;
+  let head = 0;
+  while (head < q.length) {
+    const cur = q[head++];
+    if (cur === goalId) {
+      const path = [];
+      let c = goalId;
+      while (c !== -1 && c !== startId) { path.push(c); c = prev[c]; }
+      path.push(startId);
+      path.reverse();
+      return path;
+    }
+    for (const nb of provinces[cur].adj) {
+      if (visited[nb]) continue;
+      if (nb !== goalId && canEnterFn && !canEnterFn(provinces[nb])) continue;
+      if (nb === goalId && canEnterFn && !canEnterFn(provinces[nb])) continue;
+      visited[nb] = 1;
+      prev[nb] = cur;
+      q.push(nb);
+    }
+  }
+  return null;
 }
 
 export function parseGrid(grid) {
