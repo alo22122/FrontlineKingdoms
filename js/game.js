@@ -56,7 +56,7 @@ const S = {
   visible: new Uint8Array(M.N), explored: new Uint8Array(M.N), exploredDirty: false, fogVersion: 0, fogBuilt: -1,
   bridges: new Set(), terrCanvas: null, fogCanvas: null,
   camW: { x: 0, y: 0, z: 1.5 },
-  selectedArmyId: null, selectedTile: null, selectedProvId: -1, buildType: null, bridgeMode: false, hoverTile: null,
+  selectedArmyId: null, selectedArmyIds: [], selectedTile: null, selectedProvId: -1, selectedBattlePid: -1, battleBubbles: [], lastClick: { pid: -1, time: 0 }, buildType: null, bridgeMode: false, hoverTile: null,
   online: [], spied: {}, fogOff: false, unsub: null, timers: [], menuTimer: null, inGame: false,
   acc: { gold: 0 }, popAcc: 0,
   lastTerritoryWrite: 0, lastSnapshot: 0, lastEvent: Date.now(), lastExploredSave: 0,
@@ -676,13 +676,29 @@ function resizeCanvas() {
   c.width = Math.max(200, wrap.clientWidth); c.height = Math.max(200, wrap.clientHeight);
 }
 
+const getSelectedArmies = () => S.armies.filter((a) => S.selectedArmyIds.includes(a.id) || a.id === S.selectedArmyId);
+function toggleArmySelect(id, multi = true) {
+  if (!multi) {
+    S.selectedArmyIds = S.selectedArmyIds.includes(id) && S.selectedArmyIds.length === 1 ? [] : [id];
+  } else {
+    if (S.selectedArmyIds.includes(id)) S.selectedArmyIds = S.selectedArmyIds.filter((x) => x !== id);
+    else S.selectedArmyIds = [...S.selectedArmyIds, id];
+  }
+  S.selectedArmyId = S.selectedArmyIds[0] || null;
+}
+function clearArmySelect() { S.selectedArmyIds = []; S.selectedArmyId = null; }
+
 function updateModeHint() {
   const el = $('mode-hint'), bar = $('build-confirm-bar'), cbtn = $('btn-confirm-build');
+  const sel = getSelectedArmies();
   let txt = '';
   if (S.frontlineMode) txt = '🏹 Angriffsziel-Provinz auf der Karte antippen';
-  else if (S.selectedArmyId) txt = '⚔️ Ziel-Provinz antippen (Armeen bewegen sich Provinz-zu-Provinz)';
+  else if (sel.length > 0) {
+    const tot = sel.reduce((s, a) => s + a.count, 0);
+    txt = `⚔️ ${sel.length} Armee${sel.length > 1 ? 'n' : ''} (${tot} Truppen) gewählt → Ziel-Provinz antippen (Rechtsklick/Leiste = Abbrechen)`;
+  }
   el.textContent = txt; el.hidden = !txt;
-  if (bar) bar.hidden = true;
+  if (bar) bar.hidden = sel.length === 0 && !S.frontlineMode;
   if (cbtn) cbtn.hidden = true;
 }
 
@@ -1076,7 +1092,7 @@ function armyPos(a) {
   return { x: a.x + (a.target_x - a.x) * t, y: a.y + (a.target_y - a.y) * t, moving: true };
 }
 
-async function moveArmy(a, tx, ty) {
+async function moveArmy(a, tx, ty, clearSel = true) {
   if (S.match.status !== 'running') return toast('Spiel läuft nicht.', 'err');
   const startPid = S.provOf ? S.provOf[M.idx(a.x, a.y)] : -1;
   const targetPid = S.provOf ? S.provOf[M.idx(tx, ty)] : -1;
@@ -1124,8 +1140,7 @@ async function moveArmy(a, tx, ty) {
   await sb.from('armies').update({ x: a.x, y: a.y, target_x: a.target_x, target_y: a.target_y, arrives_at: arrives }).eq('id', a.id);
   playSfx(attacksPlayer ? 'horn' : 'click');
   advanceTut('army_moved');
-  S.selectedArmyId = null;
-  updateModeHint(); renderPanel();
+  if (clearSel) { clearArmySelect(); updateModeHint(); renderPanel(); }
 }
 
 async function splitArmy(a) {
@@ -1735,7 +1750,7 @@ function render() {
       ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = Math.max(1.2, 2 / z);
       ctx.beginPath(); ctx.arc(cx, cy, uSize * 0.65, 0, Math.PI * 2); ctx.stroke();
     }
-    if (a.id === S.selectedArmyId) {
+    if (a.id === S.selectedArmyId || S.selectedArmyIds.includes(a.id)) {
       ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = Math.max(1.6, 2.6 / z);
       ctx.strokeRect(px - 2 / z, py - 2 / z, uSize + 4 / z, uSize + 4 / z);
       // Zeige erreichbare Nachbar-Provinzen (Provinz-zu-Provinz Bewegung)
@@ -1780,6 +1795,7 @@ function render() {
   // HOI4 Battle Bubbles (🟢/🟡/🔴 %) + Fortschrittsbalken & Schild-HP
   const seenBattles = new Set();
   const bRad = Math.max(11, 16 / z);
+  S.battleBubbles = [];
   for (const a of S.armies) {
     if (!a.player_id || a.count <= 0 || a.target_x == null || a.arrives_at != null) continue;
     const tpid = S.provOf && M.inBounds(a.target_x, a.target_y) ? S.provOf[M.idx(a.target_x, a.target_y)] : -1;
@@ -1794,10 +1810,22 @@ function render() {
     const dp = defs.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + hp * 0.85;
     const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
     const bx = ((a.x + prov.cx) / 2) * TILE + TILE / 2, by = ((a.y + prov.cy) / 2) * TILE;
+    const forts = provBuildings(tpid).filter((b) => b.type === 'fort').length;
+    const attKing = atts.some((x) => S.armies.some((k) => k.player_id === x.player_id && k.unit_type === 'king' && Math.hypot(armyPos(k).x - x.x, armyPos(k).y - x.y) <= 5));
+    const defKing = defs.some((d) => S.armies.some((k) => k.player_id === d.player_id && k.unit_type === 'king' && Math.hypot(armyPos(k).x - prov.cx, armyPos(k).y - prov.cy) <= 5));
+    const maxRank = Math.max(0, ...atts.map((x) => S.armyRanks[x.id] || 0));
+    const hasCatapult = atts.some((x) => x.unit_type === 'catapult');
+    S.battleBubbles.push({
+      tpid, bx, by, pct, ap: Math.round(ap), dp: Math.round(dp), hp, forts,
+      attCount: atts.reduce((s, x) => s + x.count, 0),
+      defCount: defs.reduce((s, d) => s + d.count, 0),
+      attKing, defKing, maxRank, hasCatapult
+    });
     // Kampf-Blase
     ctx.fillStyle = pct >= 55 ? '#2e9e44' : pct >= 45 ? '#d4a72c' : '#c93b32';
     ctx.beginPath(); ctx.arc(bx, by, bRad, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.2, 2 / z); ctx.stroke();
+    ctx.strokeStyle = S.selectedBattlePid === tpid ? '#ffd23f' : '#fff';
+    ctx.lineWidth = Math.max(1.2, (S.selectedBattlePid === tpid ? 3 : 2) / z); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(8, Math.round(12 / z))}px monospace`; ctx.textAlign = 'center';
     ctx.fillText(`${pct}%`, bx, by + 3 / z);
     // HOI4 Fortschrittsbalken + Verteidigungs-HP unter der Blase
@@ -1901,8 +1929,8 @@ function bindCanvas() {
       S.drag = null; return;
     }
     if (e.button === 2) {
-      S.buildType = null; S.bridgeMode = false; S.selectedArmyId = null;
-      updateModeHint(); renderPanel(); return;
+      S.buildType = null; S.bridgeMode = false; clearArmySelect(); S.selectedBattlePid = -1;
+      updateModeHint(); updateTileBar(); renderPanel(); return;
     }
     S.drag = { sx: p.mx, sy: p.my, cx: S.camW.x, cy: S.camW.y, moved: false };
   });
@@ -2030,6 +2058,14 @@ async function gatherAllArmies() {
   renderPanel();
 }
 
+async function moveSelectedArmies(tx, ty) {
+  const sel = getSelectedArmies();
+  if (!sel.length) return;
+  for (const a of sel) await moveArmy(a, tx, ty, false);
+  clearArmySelect();
+  updateModeHint(); updateTileBar(); renderPanel();
+}
+
 function onCanvasClick(t, screenPt = null) {
   if (!S.me || !S.match || !M.inBounds(t.x, t.y)) return;
   const pid = S.provOf ? S.provOf[M.idx(t.x, t.y)] : -1;
@@ -2041,10 +2077,53 @@ function onCanvasClick(t, screenPt = null) {
     updateModeHint(); renderPanel(); return;
   }
 
-  // Bildschirm-basierte Treffererkennung (funktioniert bei jedem Zoom!)
+  // 1. Schlacht-Blase (Battle Bubble) antippen -> Schlacht-Detailfenster öffnen!
+  if (screenPt && S.battleBubbles.length) {
+    for (const bb of S.battleBubbles) {
+      const sx = (bb.bx - S.camW.x) * S.camW.z;
+      const sy = (bb.by - S.camW.y) * S.camW.z;
+      if (Math.hypot(sx - screenPt.mx, sy - screenPt.my) <= 24) {
+        S.selectedBattlePid = bb.tpid;
+        playSfx('click');
+        updateTileBar();
+        return;
+      }
+    }
+  }
+  S.selectedBattlePid = -1;
+
+  // 2. Doppelklick auf eine Provinz -> ALLE eigenen Armeen in dieser Provinz wählen!
+  const tNow = now();
+  const isDouble = pid >= 0 && S.lastClick.pid === pid && (tNow - S.lastClick.time) < 420;
+  S.lastClick = { pid, time: tNow };
+  if (isDouble) {
+    const here = S.armies.filter((a) => a.player_id === S.me.id && S.provOf?.[M.idx(a.x, a.y)] === pid);
+    if (here.length > 0) {
+      S.selectedArmyIds = here.map((a) => a.id);
+      S.selectedArmyId = S.selectedArmyIds[0];
+      S.selectedProvId = pid;
+      S.selectedTile = t;
+      playSfx('horn');
+      toast(`⚔️ Alle ${here.length} Armee(n) in „${provName(S.provinces[pid])}“ ausgewählt!`, 'ok');
+      updateModeHint(); updateTileBar(); renderPanel();
+      return;
+    }
+  }
+
+  // 3. Wenn bereits Armeen gewählt sind -> Ziel-Provinz angreifen/marschieren
+  const sel = getSelectedArmies();
+  if (sel.length > 0) {
+    const allInSameProv = pid >= 0 && sel.every((a) => S.provOf?.[M.idx(a.x, a.y)] === pid);
+    if (!allInSameProv) {
+      moveSelectedArmies(t.x, t.y);
+      return;
+    }
+  }
+
+  // 4. Bildschirm-basierte Armee-Auswahl (funktioniert bei jedem Zoom!)
   let own = null, bestD = 30;
   for (const a of S.armies) {
-    if (a.player_id !== S.me.id || a.id === S.selectedArmyId) continue;
+    if (a.player_id !== S.me.id) continue;
     const vis = S.armyVis[a.id] || armyPos(a);
     if (screenPt) {
       const sx = (vis.x * TILE + TILE / 2 - S.camW.x) * S.camW.z;
@@ -2056,20 +2135,8 @@ function onCanvasClick(t, screenPt = null) {
     }
   }
 
-  const sel = S.armies.find((a) => a.id === S.selectedArmyId);
-  if (sel) {
-    const selPid = S.provOf ? S.provOf[M.idx(sel.x, sel.y)] : -1;
-    if (pid === selPid) {
-      if (own && S.provOf?.[M.idx(own.x, own.y)] === selPid) {
-        S.selectedArmyId = own.id; playSfx('click'); updateModeHint(); renderPanel(); return;
-      }
-      S.selectedArmyId = null; updateModeHint(); renderPanel(); return;
-    }
-    moveArmy(sel, t.x, t.y); return;
-  }
-
   if (own) {
-    S.selectedArmyId = own.id;
+    toggleArmySelect(own.id, false);
     if (pid >= 0) S.selectedProvId = pid;
     S.selectedTile = t;
     playSfx('click');
@@ -2087,7 +2154,31 @@ function onCanvasClick(t, screenPt = null) {
 
 function updateTileBar() {
   const bar = $('tile-bar');
-  if (!bar || !S.selectedTile || !S.terrain) { if (bar) bar.hidden = true; return; }
+  if (!bar) return;
+  if (S.selectedBattlePid >= 0) {
+    const bb = S.battleBubbles.find((b) => b.tpid === S.selectedBattlePid);
+    const prov = S.provinces?.[S.selectedBattlePid];
+    if (bb && prov) {
+      const bonuses = [
+        bb.forts > 0 ? `🏰 Festung×${bb.forts} (+${bb.forts * 25}% Def)` : null,
+        bb.maxRank > 0 ? `⭐ General St.${bb.maxRank} (+${Math.min(30, bb.maxRank * 15)}%)` : null,
+        bb.attKing ? '👑 Angreifer-König (+25%)' : null,
+        bb.defKing ? '👑 Verteidiger-König (+25%)' : null,
+        bb.hasCatapult ? '💣 Katapult-Belagerung (2.5× gegen Mauern)' : null
+      ].filter(Boolean).join(' · ') || 'Keine Sonderboni';
+      bar.innerHTML = '';
+      bar.appendChild(h(`<b>⚔️ Schlacht um ${esc(provName(prov))} (${bb.pct}%)</b> · ` +
+        `<span style="color:#7dff7a">Angreifer: ${bb.attCount}⚔️ (${bb.ap} Kraft)</span> vs ` +
+        `<span style="color:#ff8a80">Verteidiger: ${bb.defCount}⚔️ + 🛡️${bb.hp} HP (${bb.dp} Kraft)</span><br>` +
+        `<span class="muted">${bonuses}</span>`));
+      bar.appendChild(btn('✖', () => { S.selectedBattlePid = -1; updateTileBar(); }, 'btn small danger'));
+      bar.hidden = false;
+      return;
+    }
+    S.selectedBattlePid = -1;
+  }
+
+  if (!S.selectedTile || !S.terrain) { bar.hidden = true; return; }
   const { x, y } = S.selectedTile, i = M.idx(x, y);
   const known = S.explored[i] || S.fogOff;
   const pid = S.provOf ? S.provOf[i] : -1;
@@ -2106,15 +2197,24 @@ function updateTileBar() {
     bar.appendChild(btn('🛡️ +50 (40💰)', () => reinforceProvince(pid), 'btn small gold'));
     bar.appendChild(btn('✏️ Name', () => renameProvince(pid), 'btn small'));
   }
-  // Zeige stationierte eigene Armeen in dieser Provinz zum leichten Auswählen
   if (pid >= 0 && S.me) {
     const here = S.armies.filter((a) => a.player_id === S.me.id && S.provOf?.[M.idx(a.x, a.y)] === pid);
-    for (const a of here) {
-      bar.appendChild(btn(`⚔️ ${a.count}× ${UNITS[a.unit_type]?.name || ''}`, () => {
-        S.selectedArmyId = S.selectedArmyId === a.id ? null : a.id;
+    if (here.length > 1) {
+      bar.appendChild(btn(`☑️ Alle (${here.length})`, () => {
+        S.selectedArmyIds = here.map((a) => a.id); S.selectedArmyId = S.selectedArmyIds[0];
         updateModeHint(); updateTileBar(); renderPanel();
-      }, `btn small${S.selectedArmyId === a.id ? ' gold' : ''}`));
+      }, 'btn small primary'));
     }
+    for (const a of here) {
+      const isSel = S.selectedArmyIds.includes(a.id);
+      bar.appendChild(btn(`${isSel ? '✅' : '⚔️'} ${a.count}× ${UNITS[a.unit_type]?.name || ''}`, () => {
+        toggleArmySelect(a.id, true);
+        updateModeHint(); updateTileBar(); renderPanel();
+      }, `btn small${isSel ? ' gold' : ''}`));
+    }
+  }
+  if (S.selectedArmyIds.length > 0) {
+    bar.appendChild(btn('✖ Auswahl', () => { clearArmySelect(); updateModeHint(); updateTileBar(); renderPanel(); }, 'btn small danger'));
   }
   bar.appendChild(btn('📍 Ping', () => sendPing(x, y), 'btn small'));
   bar.hidden = false;
@@ -2305,27 +2405,41 @@ function panelArmy(el) {
     }
     el.appendChild(qbox);
   }
-  el.appendChild(h('<h3>⚔️ Deine Armeen</h3><p class="muted">Armee wählen → Provinz antippen (Provinz-zu-Provinz).</p>'));
+  el.appendChild(h('<h3>⚔️ Deine Armeen</h3><p class="muted">Mehrere Armeen wählen oder Doppelklick auf Provinz → Ziel-Provinz antippen.</p>'));
   const mine = S.armies.filter((a) => a.player_id === me.id);
+  if (mine.length > 0) {
+    const selRow = document.createElement('div'); selRow.className = 'row'; selRow.style.marginBottom = '6px';
+    selRow.appendChild(btn(`☑️ Alle (${mine.length}) wählen`, () => {
+      S.selectedArmyIds = mine.map((a) => a.id); S.selectedArmyId = S.selectedArmyIds[0];
+      updateModeHint(); updateTileBar(); renderPanel();
+    }, 'btn small primary'));
+    if (S.selectedArmyIds.length > 0) {
+      selRow.appendChild(btn('✖ Auswahl aufheben', () => {
+        clearArmySelect(); updateModeHint(); updateTileBar(); renderPanel();
+      }, 'btn small danger'));
+    }
+    el.appendChild(selRow);
+  }
   if (!mine.length) el.appendChild(h('<p class="muted">Keine Armeen.</p>'));
   for (const a of mine) {
     const p = armyPos(a);
+    const isSel = S.selectedArmyIds.includes(a.id) || a.id === S.selectedArmyId;
     const pid = S.provOf && M.inBounds(a.x, a.y) ? S.provOf[M.idx(a.x, a.y)] : -1;
     const pName = pid >= 0 && S.provinces[pid] ? provName(S.provinces[pid]) : `(${a.x},${a.y})`;
-    const row = document.createElement('div'); row.className = `army-row${a.id === S.selectedArmyId ? ' sel' : ''}`;
+    const row = document.createElement('div'); row.className = `army-row${isSel ? ' sel' : ''}`;
     const eta = a.arrives_at ? Math.max(0, Math.ceil((new Date(a.arrives_at).getTime() - now()) / 1000)) : 0;
     const statusTxt = a.target_x != null
       ? (a.arrives_at ? `🚶 → ${eta}s` : '⚔️ In HOI4-Schlacht!')
       : `📍 ${esc(pName)}`;
     row.innerHTML = `<img src="${spriteUrl(getUnitSprite(a.unit_type, me.color), 'u' + a.unit_type + me.color)}" alt=""><div class="grow"><b>${a.count}× ${UNITS[a.unit_type]?.name || a.unit_type}</b><br><span class="muted">${statusTxt}</span></div>`;
-    row.appendChild(btn(a.id === S.selectedArmyId ? '✔' : 'Wählen', () => {
-      S.selectedArmyId = a.id === S.selectedArmyId ? null : a.id;
+    row.appendChild(btn(isSel ? '✅' : 'Wählen', () => {
+      toggleArmySelect(a.id, true);
       S.camW.x = p.x * TILE - $('game-canvas').width / 2 / S.camW.z;
       S.camW.y = p.y * TILE - $('game-canvas').height / 2 / S.camW.z;
-      updateModeHint(); renderPanel();
+      updateModeHint(); updateTileBar(); renderPanel();
     }, 'btn small', false));
     el.appendChild(row);
-    if (a.id === S.selectedArmyId && a.target_x == null) {
+    if (isSel && a.target_x == null) {
       const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginBottom = '8px';
       actions.appendChild(btn('✂️ Teilen', () => splitArmy(a), 'btn small', a.count < 2));
       actions.appendChild(btn('🔗 Vereinen', () => mergeArmies(a)));
@@ -2561,7 +2675,7 @@ function bindStatic() {
   $('tut-next').onclick = () => { if (S.tutStep >= 0 && S.tutStep < TUT_STEPS.length) advanceTut(TUT_STEPS[S.tutStep].trigger); };
   $('tut-skip').onclick = () => { S.tutStep = -1; localStorage.setItem('fk_it_done', '1'); renderTut(); };
   $('btn-confirm-build').onclick = confirmPendingBuilds;
-  $('btn-cancel-mode').onclick = () => { S.buildType = null; S.bridgeMode = false; S.selectedArmyId = null; S.pendingBuilds = []; updateModeHint(); renderPanel(); };
+  $('btn-cancel-mode').onclick = () => { S.buildType = null; S.bridgeMode = false; S.frontlineMode = false; clearArmySelect(); S.pendingBuilds = []; updateModeHint(); updateTileBar(); renderPanel(); };
   $('btn-admin').onclick = openAdminPanel;
   $('btn-fullscreen').onclick = () => {
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
