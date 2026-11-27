@@ -1435,7 +1435,9 @@ async function runCombatTick(pvp) {
       d.player_id !== mainAtt.id && !allied(d.player_id, mainAtt.id)
     );
     if (S.provHp[tpid] == null) S.provHp[tpid] = provDefense(tpid);
-    let attPow = attackers.reduce((s, a) => s + armyPower(a, a.x, a.y), 0);
+    const flankOrigins = new Set(attackers.map((a) => S.provOf?.[M.idx(a.x, a.y)]).filter((id) => id != null && id >= 0)).size;
+    const flankMult = 1 + Math.max(0, flankOrigins - 1) * 0.15;
+    let attPow = attackers.reduce((s, a) => s + armyPower(a, a.x, a.y), 0) * flankMult;
     const hasCatapult = attackers.some((a) => a.unit_type === 'catapult');
     let defPow = defenders.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + Math.max(0, S.provHp[tpid]) * (hasCatapult ? 0.45 : 0.85);
     const bx = (attackers[0].x + prov.cx) / 2, by = (attackers[0].y + prov.cy) / 2;
@@ -1922,6 +1924,22 @@ function render() {
       ctx.lineTo(txp - headLen * Math.cos(ang + 0.5), typ - headLen * Math.sin(ang + 0.5));
       ctx.closePath(); ctx.fill();
     }
+    // Verteidigungs-Pfeile & Schild-Indikator (Blau/Grün) für Armeen, die gerade einen Angriff abwehren
+    if (!a.target_x) {
+      const myPid = S.provOf && M.inBounds(a.x, a.y) ? S.provOf[M.idx(a.x, a.y)] : -1;
+      const incoming = myPid >= 0 ? S.armies.find((e) =>
+        e.player_id && e.count > 0 && e.target_x != null && !e.arrives_at &&
+        S.provOf?.[M.idx(e.target_x, e.target_y)] === myPid && !allied(e.player_id, a.player_id)
+      ) : null;
+      if (incoming) {
+        const ang = Math.atan2(incoming.y * TILE - a.y * TILE, incoming.x * TILE - a.x * TILE);
+        const sx = cx + Math.cos(ang) * (uSize * 0.65), sy = cy + Math.sin(ang) * (uSize * 0.65);
+        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = Math.max(2, 3 / z);
+        ctx.beginPath(); ctx.arc(cx, cy, uSize * 0.68, ang - 0.8, ang + 0.8); ctx.stroke();
+        ctx.fillStyle = '#38bdf8'; ctx.font = `bold ${Math.max(8, Math.round(11 / z))}px monospace`;
+        ctx.fillText('🛡️', sx, sy + 3 / z);
+      }
+    }
     ctx.drawImage(sprite, px, py, uSize, uSize);
     const rank = S.armyRanks[a.id] || 0;
     const badge = (rank >= 2 ? '⭐⭐' : rank === 1 ? '⭐' : '') + ((S.entrench[a.id] || 0) >= 8 ? '🛡️' : '');
@@ -1946,7 +1964,9 @@ function render() {
     if (!prov) continue;
     const atts = S.armies.filter((x) => x.player_id && x.count > 0 && x.target_x === a.target_x && x.target_y === a.target_y && !x.arrives_at);
     const defs = S.armies.filter((d) => d.player_id && d.count > 0 && !d.target_x && S.provOf?.[M.idx(d.x, d.y)] === tpid && !allied(d.player_id, a.player_id));
-    const ap = atts.reduce((s, x) => s + armyPower(x, x.x, x.y), 0);
+    const flankOrigins = new Set(atts.map((x) => S.provOf?.[M.idx(x.x, x.y)]).filter((id) => id != null && id >= 0)).size;
+    const flankMult = 1 + Math.max(0, flankOrigins - 1) * 0.15;
+    const ap = atts.reduce((s, x) => s + armyPower(x, x.x, x.y), 0) * flankMult;
     const hp = Math.max(0, Math.round(S.provHp[tpid] ?? provDefense(tpid)));
     const dp = defs.reduce((s, d) => s + armyPower(d, prov.cx, prov.cy), 0) + hp * 0.85;
     const pct = Math.round((ap / Math.max(1, ap + dp)) * 100);
@@ -1957,7 +1977,7 @@ function render() {
     const maxRank = Math.max(0, ...atts.map((x) => S.armyRanks[x.id] || 0));
     const hasCatapult = atts.some((x) => x.unit_type === 'catapult');
     S.battleBubbles.push({
-      tpid, bx, by, pct, ap: Math.round(ap), dp: Math.round(dp), hp, forts,
+      tpid, bx, by, pct, ap: Math.round(ap), dp: Math.round(dp), hp, forts, flankOrigins,
       attCount: atts.reduce((s, x) => s + x.count, 0),
       defCount: defs.reduce((s, d) => s + d.count, 0),
       attKing, defKing, maxRank, hasCatapult
@@ -2254,11 +2274,23 @@ function onCanvasClick(t, screenPt = null) {
     }
   }
 
-  // 3. Wenn bereits Armeen gewählt sind -> Ziel-Provinz angreifen/marschieren
+  // 3. Wenn bereits Armeen gewählt sind -> Ziel-Provinz angreifen/marschieren (oder Klick auf Heimatprovinz bricht Angriff ab!)
   const sel = getSelectedArmies();
   if (sel.length > 0) {
     const allInSameProv = pid >= 0 && sel.every((a) => S.provOf?.[M.idx(a.x, a.y)] === pid);
-    if (!allInSameProv) {
+    if (allInSameProv) {
+      const attacking = sel.filter((a) => a.target_x != null && !a.arrives_at);
+      if (attacking.length > 0) {
+        for (const a of attacking) {
+          delete S.armyRoutes[a.id]; delete S.battleStartCount[a.id];
+          updateArmy(a, { target_x: null, target_y: null, arrives_at: null });
+        }
+        playSfx('click');
+        toast(`🏳️ Angriff von ${attacking.length} Armee(n) abgebrochen!`, 'ok');
+        clearArmySelect(); updateModeHint(); updateTileBar(); renderPanel();
+        return;
+      }
+    } else {
       moveSelectedArmies(t.x, t.y);
       return;
     }
@@ -2304,6 +2336,7 @@ function updateTileBar() {
     const prov = S.provinces?.[S.selectedBattlePid];
     if (bb && prov) {
       const bonuses = [
+        (bb.flankOrigins || 1) > 1 ? `⚔️ Flanken-Bonus (${bb.flankOrigins} Richtungen: +${(bb.flankOrigins - 1) * 15}%)` : null,
         bb.forts > 0 ? `🏰 Festung×${bb.forts} (+${bb.forts * 25}% Def)` : null,
         bb.maxRank > 0 ? `⭐ General St.${bb.maxRank} (+${Math.min(30, bb.maxRank * 15)}%)` : null,
         bb.attKing ? '👑 Angreifer-König (+25%)' : null,
