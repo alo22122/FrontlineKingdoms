@@ -65,7 +65,7 @@ const S = {
   quests: { built: 0, conquered: 0, trade: 0, fort: 0, done: {} },
   alertedArmies: new Set(), provCooldown: {}, fx: [], trainQueue: [], pendingBuilds: [], chatFilter: 'all',
   reconUntil: 0, frontPush: false, frontlineMode: false, frontTarget: null, entrench: {}, armyRanks: {}, supplied: new Uint8Array(M.N), peakPct: {},
-  armyRoutes: {}, provHp: {}, armyVis: {}, autoRetreat: false, battleStartCount: {}, dmgAcc: {}, techQueue: null
+  armyRoutes: {}, provHp: {}, armyVis: {}, autoRetreat: false, battleStartCount: {}, dmgAcc: {}, techQueue: null, encircledProvs: new Set()
 };
 const isDone = (b) => !b.construction_end_at || new Date(b.construction_end_at).getTime() <= now();
 
@@ -886,6 +886,32 @@ function computeSupply() {
       }
     }
   }
+  // Kesselschlacht-Erkennung für alle Spieler über Provinz-Graph
+  const enc = new Set();
+  if (S.provinces && S.provOf) {
+    for (const p of S.players) {
+      if (p.is_eliminated || p.capital_x == null) continue;
+      const capPid = S.provOf[M.idx(p.capital_x, p.capital_y)];
+      if (capPid < 0) continue;
+      const reach = new Set([capPid]);
+      const pq = [capPid];
+      let ph = 0;
+      while (ph < pq.length) {
+        const cur = pq[ph++];
+        for (const nb of S.provinces[cur]?.adj || []) {
+          const npr = S.provinces[nb];
+          if (!npr || npr.isSea || reach.has(nb)) continue;
+          const ns = S.territory[M.idx(npr.cx, npr.cy)];
+          const np = ns >= 0 ? playerBySlot(ns) : null;
+          if (ns === p.slot || (np && allied(np.id, p.id))) { reach.add(nb); pq.push(nb); }
+        }
+      }
+      for (const pr of S.provinces) {
+        if (!pr.isSea && S.territory[M.idx(pr.cx, pr.cy)] === p.slot && !reach.has(pr.id)) enc.add(pr.id);
+      }
+    }
+  }
+  S.encircledProvs = enc;
 }
 
 function getBorderProvinces() {
@@ -960,7 +986,7 @@ async function clientTick() {
   await processTechQueue();
   computeSupply();
   for (const a of S.armies) {
-    if (a.player_id === me.id && a.target_x == null) S.entrench[a.id] = Math.min(15, (S.entrench[a.id] || 0) + 1);
+    if (a.player_id === me.id && a.target_x == null) S.entrench[a.id] = Math.min(15, (S.entrench[a.id] || 0) + 3);
     else delete S.entrench[a.id];
   }
   await runFrontPush();
@@ -1392,9 +1418,10 @@ function armyPower(a, x, y) {
     if (p.id === S.me?.id && S.supplied && !S.supplied[M.idx(x, y)] && a.unit_type !== 'ship' && a.unit_type !== 'warship') {
       pw *= 0.65; // Kein Nachschub
     }
+    const pid = S.provOf && M.inBounds(x, y) ? S.provOf[M.idx(x, y)] : -1;
+    if (pid >= 0 && S.encircledProvs?.has(pid)) pw *= 0.65; // Eingekesselt!
     const hasKing = S.armies.some((k) => k.player_id === p.id && k.unit_type === 'king' && Math.hypot(armyPos(k).x - x, armyPos(k).y - y) <= 5);
     if (hasKing) pw *= 1.25;
-    const pid = S.provOf && M.inBounds(x, y) ? S.provOf[M.idx(x, y)] : -1;
     if (pid >= 0 && S.territory[M.idx(x, y)] === p.slot) {
       const forts = provBuildings(pid).filter((b) => b.type === 'fort').length;
       pw *= 1.15 + Math.min(0.5, forts * 0.25) + (t.def || 0) * 0.1;
@@ -1942,8 +1969,9 @@ function render() {
     }
     ctx.drawImage(sprite, px, py, uSize, uSize);
     const rank = S.armyRanks[a.id] || 0;
-    const badge = (rank >= 2 ? '⭐⭐' : rank === 1 ? '⭐' : '') + ((S.entrench[a.id] || 0) >= 8 ? '🛡️' : '');
-    if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, cx, py - 2 / z); }
+    const entPct = (S.entrench[a.id] || 0) * 2;
+    const badge = (rank >= 2 ? '⭐⭐' : rank === 1 ? '⭐' : '') + (entPct >= 6 ? `🛡️+${entPct}%` : '');
+    if (badge) { ctx.fillStyle = '#ffd23f'; ctx.fillText(badge, cx, py - 3 / z); }
     const bw = Math.max(16, uSize * 0.8), bh = fSize + 3 / z;
     ctx.fillStyle = '#000d'; ctx.fillRect(cx - bw / 2, py + uSize - bh * 0.4, bw, bh);
     ctx.strokeStyle = owner ? owner.color : '#fff'; ctx.lineWidth = Math.max(0.8, 1.2 / z);
@@ -1998,6 +2026,23 @@ function render() {
     ctx.fillStyle = '#2e9e44'; ctx.fillRect(bx - barW / 2, by + bRad + 2 / z, barW * (pct / 100), barH);
     ctx.fillStyle = '#ffd23f'; ctx.font = `bold ${Math.max(6, Math.round(9 / z))}px monospace`;
     ctx.fillText(`🛡️${hp}`, bx, by + bRad + barH + Math.max(8, 10 / z));
+  }
+
+  // Kesselschlacht-Alarm (abgeschnittene Provinzen ohne Hauptstadt-Verbindung)
+  if (S.encircledProvs?.size && S.provinces) {
+    for (const pid of S.encircledProvs) {
+      const pr = S.provinces[pid];
+      if (!pr) continue;
+      const pi = M.idx(pr.cx, pr.cy);
+      if (!S.explored[pi] && !S.fogOff) continue;
+      const kPulse = 0.5 + 0.4 * Math.sin(tNow / 220);
+      ctx.strokeStyle = `rgba(255, 110, 40, ${kPulse})`; ctx.lineWidth = Math.max(1.5, 2.4 / z);
+      ctx.setLineDash([4 / z, 3 / z]);
+      ctx.beginPath(); ctx.arc(pr.cx * TILE + TILE / 2, pr.cy * TILE + TILE / 2, Math.max(12, 16 / z), 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff9100'; ctx.font = `bold ${Math.max(7, Math.round(10 / z))}px monospace`; ctx.textAlign = 'center';
+      ctx.fillText('⚠️ KESSEL', pr.cx * TILE + TILE / 2, pr.cy * TILE - Math.max(10, 14 / z));
+    }
   }
 
   if (S.selectedProvId >= 0 && S.provinces[S.selectedProvId]) {
@@ -2370,7 +2415,8 @@ function updateTileBar() {
   const goldVal = prov ? provGoldRate(pid).toFixed(1) : '0';
   bar.appendChild(h(`<b>${known && prov ? `🏛️ ${esc(provName(prov))}` : `Feld (${x}, ${y})`}</b> · ` +
     `${known ? (owner ? `<span style="color:${owner.color}">${esc(owner.kingdom_name)}</span>` : 'Neutral') : '???'}` +
-    (known && prov && !prov.isSea ? ` · 🛡️${defVal} · +${goldVal}💰/s` : '')));
+    (known && prov && !prov.isSea ? ` · 🛡️${defVal} · +${goldVal}💰/s` : '') +
+    (known && pid >= 0 && S.encircledProvs?.has(pid) ? ' · <span style="color:#ff9100">⚠️ Eingekesselt (-35%)</span>' : '')));
   if (owner && owner.id === S.me?.id && pid >= 0 && !prov?.isSea) {
     bar.appendChild(btn('🔨 Ausbauen', () => { S.selectedProvId = pid; setActiveTab('build'); }, 'btn small primary'));
     bar.appendChild(btn('🛡️ +50 (40💰)', () => reinforceProvince(pid), 'btn small gold'));
